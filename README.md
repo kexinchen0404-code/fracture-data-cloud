@@ -63,3 +63,7 @@ python3 bcer_pilot.py --draft-id 123456
 - [Zenodo 存储额度](https://help.zenodo.org/docs/deposit/manage-quota/)
 - [Zenodo 上传 API](https://developers.zenodo.org/)
 - [GitHub 免费额度](https://docs.github.com/en/billing/reference/product-usage-included)
+
+## FTPS 证书兼容说明
+
+2026-11-05 的云端诊断发现 BCER FTPS 服务未完整发送 R13 中间证书。本项目附带 [Let's Encrypt 官方 R13](https://letsencrypt.org/certs/2024/r13.pem)，仅用于此客户端补齐证书链；仍验证受信任根、域名和有效期，不修改系统证书设置。该中间证书有效期至 2027-03-12；源站换证后若验证失败，应重新核查完整证书链，不可关闭校验。

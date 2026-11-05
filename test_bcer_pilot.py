@@ -1,6 +1,7 @@
 import hashlib
 import io
 import os
+import ssl
 from pathlib import Path
 import tempfile
 import unittest
@@ -31,6 +32,14 @@ class PilotTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(RuntimeError):
                 p.require_cloud()
+
+    def test_ftps_keeps_root_and_hostname_verification(self):
+        with patch.object(p.ftplib, "FTP_TLS") as factory:
+            p.connect_ftps()
+            context = factory.call_args.kwargs["context"]
+            self.assertTrue(context.check_hostname)
+            self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+            self.assertFalse(context.verify_flags & getattr(ssl, "VERIFY_X509_PARTIAL_CHAIN", 0))
 
     def test_download_preserves_bytes_and_hashes(self):
         payload = b"%PDF-1.7\nsample raw bytes\n"

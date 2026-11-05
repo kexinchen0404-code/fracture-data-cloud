@@ -46,7 +46,12 @@ def read_sources(path):
 
 
 def connect_ftps():
-    ftp = ftplib.FTP_TLS(context=ssl.create_default_context(), timeout=60)
+    context = ssl.create_default_context()
+    # BCER currently omits R13 on its FTPS chain. Supply the official intermediate,
+    # while still requiring a trusted root, hostname verification and valid dates.
+    context.load_verify_locations(cafile=str(Path(__file__).parent / "certs/letsencrypt-r13.pem"))
+    context.verify_flags &= ~getattr(ssl, "VERIFY_X509_PARTIAL_CHAIN", 0)
+    ftp = ftplib.FTP_TLS(context=context, timeout=60)
     ftp.connect(HOST, 21)
     ftp.auth()
     return ftp
