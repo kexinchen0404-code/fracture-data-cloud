@@ -1,0 +1,5 @@
+.cloud-state/
+__pycache__/
+.env
+.env.*
+*.part

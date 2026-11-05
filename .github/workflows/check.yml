@@ -1,0 +1,17 @@
+name: Pilot checks
+on:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check transfer safeguards
+        run: python3 -m unittest -v test_bcer_pilot.py
+      - name: Probe BCER TLS without credentials or data
+        continue-on-error: true
+        run: python3 bcer_pilot.py --probe
