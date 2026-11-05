@@ -1,69 +1,72 @@
-# BCER 科研数据云端试跑
+# 跨项目科研云数据源
 
-本仓库只保存脚本、来源清单和操作说明。BCER 原始文件在 GitHub Codespaces 中分批下载，并上传到你的 Zenodo 未发布草稿；本机不接收原始数据。
+目标：多个 Codex 项目共用同一份云端资料目录和结构化结果；大型原始文件在云端处理与归档。
 
-当前样本：WA 36588 的完井修订报告、MWDGR MD 与 TVD 两份 LAS，共 3 个文件。网站显示的大小经过取整；程序以传输服务器返回的精确字节数校验。
+## 三个部分
 
-## 状态
+| 部分 | 名称 | 用途 |
+| --- | --- | --- |
+| Turso 云数据库 | research-catalog，research-data 数据组 | 数据集、文件索引、按项目标识保存的小型 JSON 结果 |
+| Codex MCP 入口 | research_data | 在同一台电脑的多个 Codex 项目中读取和写入这个库 |
+| 大文件归档 | Zenodo，待完成迁移试跑 | 保存公开科研原始文件和稳定成果，不把约 1 TB 原始文件塞进数据库 |
 
-- 已核实源站目录和这 3 个文件名；这不代表已经下载或解析文件内容。
-- 默认最多 3 个文件、合计 100 MB；本试点程序的单次上限为 5 GB。
-- 使用显式 FTPS，验证服务器证书，并对数据通道加密。是否可以从 Codespaces 连接源站，需要实际探测确认。
-- 逐块下载与上传；记录精确大小、SHA-256、MD5、来源路径与时间。
-- 原始文件仅在 Zenodo 返回匹配的大小与 MD5 后，才移除云端临时副本；失败时保留云端副本或 .part。
-- 已存在同名但内容不同的 Zenodo 原始文件时停止，不覆盖。
-- 没有自动发布功能。先核对 BCER 资料的再发布许可、数据说明和署名，再在 Zenodo 审阅发布。
-- 本试点用于验证链路，不是已验证的 1 TB 批量迁移工具；尚未实现跨中断续传、全量调度和 PDF/LAS 解析。
+[打开云数据库](https://app.turso.tech/kexinchen0404-code/databases/research-catalog)
 
-## 1. 云端运行环境
+Turso 使用 Free 方案，账号的数据库总免费存储为 5 GB，受平台当前额度约束。数据库与原始文件归档分别计算容量。
 
-在本仓库选择 Code → Codespaces → 创建 2 核环境。先检查免费额度和账单预算；若出现付费要求，停止，不添加付费资源。
+## 当前实现
 
-GitHub Free 的 Codespaces 额度有限，不能视为持续运行的免费服务器。GitHub Actions 在这里只做短时测试和 TLS 探测，不用来批量抓取原始数据。
+- catalog_schema.sql 建立 datasets、files、project_results 三张表。
+- sources.csv 已核实 WA 36588 的 3 个来源文件：完井修订报告、MWDGR MD、MWDGR TVD。
+- 文件目录初始状态为 catalogued，精确字节数、SHA-256 和归档链接为空；这不代表原始文件已迁移。
+- research_data_mcp.py 提供 list_datasets、list_files、write_result、read_result、list_results 五个工具。
+- 结果用 project_id + result_key 标识，避免不同项目的同名结果互相覆盖。这是命名区分；同一用户可以明确指定其他项目来读取共享结果。
+- 单条结构化结果上限 64 KB；大文件应保存在归档服务，仅把链接与校验值写入数据库。
 
-## 2. 在 Codespaces Secrets 中配置
+## Codex 中使用
 
-打开 https://github.com/settings/codespaces ，在 Secrets 中为本仓库添加：
+这台电脑已安装全局 research_data MCP 入口。数据库专用读写凭据保存后，重启 Codex 或新开聊天，确认 MCP 服务器列表中 research_data 可用。
 
-| 名称 | 值 |
-| --- | --- |
-| BCER_USERNAME | 你的 BCER 用户名 |
-| BCER_PASSWORD | 你的 BCER 密码 |
-| ZENODO_TOKEN | 你的 Zenodo 上传令牌 |
+例如：
 
-Zenodo 令牌在 https://zenodo.org/account/settings/applications/tokens/new/ 创建，仅勾选 deposit:write。不要勾选 deposit:actions；此流程不需要发布权限。不要把令牌或密码放在仓库、CSV、命令参数、聊天或日志中。设置 Secrets 后，需重启已有 Codespace 使其载入。
+> 使用 research_data 列出云端数据集，再读取 bcer-wa36588-pilot 的文件目录。
 
-## 3. 先检查，再创建草稿
+> 使用 research_data，把本项目的处理结果保存到 project_id=water-model-a，result_key=run-001。
 
-在 Codespaces 的 Linux 终端运行（Python 3.9+，无第三方依赖）：
+> 从 research_data 读取 project_id=water-model-a、result_key=run-001 的结果。
+
+这是同一 Codex 主机的共享连接。另一台电脑或 Codex 云端环境需要单独配置连接与授权，不会自动继承本机凭据。
+
+## 凭据处理
+
+官方 Turso MCP 的 OAuth 登录目前被此 Codex 客户端的授权来源校验阻止，因此使用只连接 research-catalog 的轻量 STDIO 连接器。
+
+本机只运行少量连接代码，不复制数据库文件或原始资料。连接器通过 HTTPS 查询云数据库；不提供任意 SQL 或删除工具。
+
+数据库读写令牌只用于 research-catalog。由用户在私密输入提示中运行 Save-Token.ps1 保存为 Windows 当前用户加密的 token.xml；密钥不进入仓库、命令参数或聊天。换电脑或 Windows 用户后必须重新授权。
+
+## BCER 大文件迁移状态
+
+bcer_pilot.py 是受大小限制的 FTPS 到 Zenodo 草稿试点，默认 3 个文件、合计 100 MB，单次最多 5 GB；逐块传输并核对大小和校验值。仅在 Zenodo 验证匹配后清理云端临时副本。
+
+2026-11-05 的云端探测确认：BCER FTPS 缺少 R13 中间证书，补齐 [Let's Encrypt 官方 R13](https://letsencrypt.org/certs/2024/r13.pem) 后又报告服务器证书已过期。证书校验保持开启。当前 FTPS 迁移尚未跑通，需要改用证书有效的 HTTPS 下载通道或由源站修复证书；不要关闭 TLS 校验。
+
+Zenodo 登录已完成，但上传令牌尚未配置。原始文件还未完成云端上传；约 1 TB 全量迁移尚未开始。应先完成三文件端到端试跑、核对再发布许可，再扩展规模。
+
+Codespaces 已创建并停止运行，避免空闲计算继续消耗额度。恢复后先同步本仓库最新代码。仅使用免费额度，不添加付费资源。Codespaces 不是 1 TB 持久存储。
+
+## 检查
 
 ```bash
-python3 -m unittest -v test_bcer_pilot.py
-python3 bcer_pilot.py --probe
-python3 bcer_pilot.py --create-draft
+python3 -m unittest discover -v
 ```
 
-最后一条命令打印未发布草稿 ID；每次执行都会新建草稿，成功后不要重复创建。
+GitHub Actions 在代码变更后运行小型离线测试。FTPS 联通探测仅在手动触发工作流时运行，其失败与源码单元检查分开显示。
 
-## 4. 三文件试跑
+## 官方参考
 
-把下面的数字替换为刚才打印的草稿 ID：
-
-```bash
-python3 bcer_pilot.py --draft-id 123456
-```
-
-程序上传原始文件和 pilot_manifest.json。完成后在 Zenodo 草稿查看文件数量、大小和清单；草稿未发布，不代表已经公开归档或取得正式 DOI。
-
-相同内容再次运行时会重新下载核对，但跳过重复上传；单个失败文件目前会从头重新传输。大规模处理前再完善续传与调度。
-
-## 官方说明
-
-- [BCER eLibrary：公开、免费访问的井资料入口](https://www.bc-er.ca/energy-professionals/online-systems/elibrary/)
+- [Codex MCP 与共享配置](https://learn.chatgpt.com/docs/extend/mcp)
+- [Turso 官方 Codex 连接说明](https://github.com/tursodatabase/turso-mcp/blob/main/codex/README.md)
+- [Turso 免费额度](https://turso.tech/pricing)
+- [BCER eLibrary](https://www.bc-er.ca/energy-professionals/online-systems/elibrary/)
 - [Zenodo 存储额度](https://help.zenodo.org/docs/deposit/manage-quota/)
-- [Zenodo 上传 API](https://developers.zenodo.org/)
-- [GitHub 免费额度](https://docs.github.com/en/billing/reference/product-usage-included)
-
-## FTPS 证书兼容说明
-
-2026-11-05 的云端诊断发现 BCER FTPS 服务未完整发送 R13 中间证书。本项目附带 [Let's Encrypt 官方 R13](https://letsencrypt.org/certs/2024/r13.pem)，仅用于此客户端补齐证书链；仍验证受信任根、域名和有效期，不修改系统证书设置。该中间证书有效期至 2027-03-12；源站换证后若验证失败，应重新核查完整证书链，不可关闭校验。

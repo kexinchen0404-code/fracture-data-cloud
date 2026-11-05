@@ -1,6 +1,11 @@
 name: Pilot checks
 on:
   push:
+    paths:
+      - '*.py'
+      - 'catalog_schema.sql'
+      - 'certs/**'
+      - '.github/workflows/check.yml'
   workflow_dispatch:
 permissions:
   contents: read
@@ -10,7 +15,13 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - name: Check transfer safeguards
-        run: python3 -m unittest -v test_bcer_pilot.py
+      - name: Check cloud transfer and shared database safeguards
+        run: python3 -m unittest discover -v
+  bcer-tls-probe:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
       - name: Probe BCER TLS without credentials or data
         run: python3 bcer_pilot.py --probe
