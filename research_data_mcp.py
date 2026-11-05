@@ -144,6 +144,7 @@ def handle(message):
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8")
     while True:
         line = sys.stdin.buffer.readline(1024 * 1024 + 1)
         if not line:
