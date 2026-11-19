@@ -1,0 +1,44 @@
+name: Build and store verified BCER all-well workbook
+on:
+  push:
+    branches: ['codex/bcer-all-wells']
+    paths: ['.github/workflows/bcer-workbook.yml','cloud/verified-report-sheets.zip']
+  workflow_dispatch:
+permissions:
+  contents: write
+env:
+  RESULT_TAG: bcer-report-index-44541449531-v1
+jobs:
+  workbook:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify official input and report measurements
+        run: |
+          python3 -m pip install --quiet 'xlsxwriter==3.2.9' 'lxml>=5,<7'
+          mkdir -p tmp/curve_read/merged_sheets data/bcer_current
+          unzip -q cloud/verified-report-sheets.zip -d tmp/curve_read/merged_sheets
+          cp tmp/curve_read/merged_sheets/source_manifest.json data/bcer_current/
+          curl --fail --location --retry 4 --silent --show-error https://iris.bcogc.ca/download/hydraulic_fracture_csv.zip -o data/bcer_current/hydraulic_fracture_csv.zip
+          echo '45952efee934feb7ae02ee689482dd4b1fa8f4078ac3b6be467627007609f78c  data/bcer_current/hydraulic_fracture_csv.zip' | sha256sum --check
+      - name: Assemble and verify workbook data
+        run: |
+          python3 cloud/build_bcer_all_wells.py
+          python3 cloud/merge_pdf_workbook.py
+          python3 -c 'import json,zipfile,pathlib; d=pathlib.Path("tmp/curve_read/merged_sheets"); z=zipfile.ZipFile(next(pathlib.Path("outputs").rglob("*.xlsx"))); crc=json.loads((d/"verified_sheet_crc.json").read_text()); assert all(z.getinfo(p).CRC==v for p,v in crc.items()),"Scientific worksheet differs from locally verified copy"; print("Verified",len(crc),"sheet XML checksums")'
+          ln outputs/*/*.xlsx "BCER-fracture-stages-${GITHUB_RUN_ID}.xlsx"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BCER-all-wells-workbook
+          path: BCER-fracture-stages-*.xlsx
+          retention-days: 14
+          compression-level: 0
+      - name: Store current workbook alongside cloud measurements
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$RESULT_TAG" BCER-fracture-stages-*.xlsx
+          gh release view "$RESULT_TAG" --json url --jq .url
