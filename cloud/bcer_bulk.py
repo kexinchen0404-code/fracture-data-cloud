@@ -23,11 +23,13 @@ from bcer_client import BCERClient, SourceError
 FRACTURE = re.compile(r'fractur|fracc?ing|stimulation|proppant|\bISIP\b|frac[- ]?hit|offset.{0,30}pressure',re.I)
 REPORT = re.compile(r'_(?:COMP|FRAC|STIM|PERF)(?:_|\.)',re.I)
 PARAMETERS = [
- ('breakdown_pressure',r'(?:formation\s+)?break\s*down\s+pressure','pressure'),
+ ('breakdown_pressure',r'(?:BD|(?:formation\s+)?break\s*down)\s+pressure','pressure'),
  ('isip',r'(?:surface\s+)?(?:I\.?S\.?I\.?P\.?|instant(?:aneous)?\s+shut[- ]?in\s+pressure)','pressure'),
  ('maximum_treating_pressure',r'max(?:imum)?\.?\s+treat(?:ing|ment)\s+pressure','pressure'),
  ('average_treating_pressure',r'avg\.?\s+treat(?:ing|ment)\s+pressure|average\s+treat(?:ing|ment)\s+pressure','pressure'),
  ('average_rate',r'(?:avg\.?|average)\s+(?:slurry\s+|treat(?:ing|ment)\s+)?rate','rate'),
+ ('maximum_treating_rate',r'max(?:imum)?\.?\s+(?:slurry\s+|treat(?:ing|ment)\s+)rate','rate'),
+ ('breakdown_rate',r'(?:BD|break\s*down)\s+rate','rate'),
  ('cluster_count_reported',r'(?:number\s+of\s+(?:perf(?:oration)?\s+)?clusters|no\.?\s+of\s+clusters)','count'),
 ]
 
@@ -101,7 +103,7 @@ def parameter_candidates(text):
     # Require the value and its physical unit on the same line; preserve native units.
     for parameter,label,kind in PARAMETERS:
         unit=r'(MPa|kPa|psi)' if kind=='pressure' else r'(m[³3]\s*/\s*min|bbl\s*/\s*min|bpm)' if kind=='rate' else r'()'
-        pattern=r'(?im)\b(?:'+label+r')\s*[:=]?\s*(-?\d+(?:\.\d+)?)\s*'+unit+r'\b'
+        pattern=r'(?im)\b(?:'+label+r')[^\S\r\n]*[:=]?[^\S\r\n]*(-?\d+(?:\.\d+)?)[^\S\r\n]*'+unit+(r'(?![A-Za-z])' if kind!='count' else r'(?![\d.])')
         for m in re.finditer(pattern,text):
             value=float(m[1])
             if math.isfinite(value):result.append((parameter,value,m[2] or 'count',m[0][:240]))
@@ -109,8 +111,8 @@ def parameter_candidates(text):
 
 def stage_label(text):
     # "Stage Summary / Stage Number" often describes a pumping step, not a frac stage.
-    m=re.search(r'(?im)\b(?:Interval|Frac(?:ture)?\s+Stage)\s*[:#-]?\s*(\d+[A-Za-z]?)\b',text)
-    return m[1] if m else None
+    labels=set(re.findall(r'(?im)\b(?:Interval|Frac(?:ture)?\s+Stage)\s*[:#-]?\s*(\d+[A-Za-z]?)\b',text))
+    return next(iter(labels)) if len(labels)==1 else None
 
 def vector_features(pdf_path,page_number,text):
     if not re.search(r'Interval\s+\d+\s*[–-]\s*(?:Entire Treatment|Treatment Part)',text):
@@ -119,11 +121,18 @@ def vector_features(pdf_path,page_number,text):
     if not all(re.search(p,text,re.I) for p in [r'Treating\s+Pressure',r'Slurry\s+Rate',r'Proppant',r'MPa']):
         return []
     import pdfplumber
-    from extract_fracturing_curves import calibrate,read_curves
-    with pdfplumber.open(pdf_path) as pdf:
-        page=pdf.pages[page_number-1]
+    from bcer_vectors import SERIES,calibrate,read_curves
+    with pdfplumber.open(pdf_path,pages=[page_number]) as pdf:
+        page=pdf.pages[0]
         try:
-            cal=calibrate(page);paths=read_curves(page,cal)
+            words=page.extract_words(extra_attrs=['non_stroking_color'])
+            required=(('Treating','Pressure'),('Slurry','Rate'),('Slurry','Proppant'),('BH','Proppant'))
+            for color,tokens in zip(SERIES,required):
+                legend={w['text'] for w in words if w.get('non_stroking_color')==color}
+                if not set(tokens)<=legend:return []
+            cal=calibrate(page)
+            if len(cal['time']['anchors'])<3 or cal['time']['slope']<=0 or cal['time']['max_residual']>2:return []
+            paths=read_curves(page,cal)
             output=[]
             for pid,path in enumerate(paths):
                 points=path['points'];axis=cal['y_axes'][path['axis']]
@@ -146,7 +155,7 @@ def extract_pdf(path,remote,db):
     try:
         for i in range(pages):
             page=document[i];textpage=page.get_textpage()
-            try:text=textpage.get_text_range()
+            try:text=textpage.get_text_bounded()
             finally:textpage.close();page.close()
             template=next((s for s in ['HALLIBURTON','CALFRAC','TRICAN','SCHLUMBERGER','STEP ENERGY','BAKER HUGHES'] if s in text.upper()),None)
             if template:templates.add(template)
@@ -155,9 +164,12 @@ def extract_pdf(path,remote,db):
             formation='; '.join(sorted(set(m.group(0) for m in re.finditer(r'\b(?:Upper|Middle|Lower)\s+Montney\b',text,re.I))))
             hit=bool(re.search(r'frac[- ]?hit|fracture[- ]driven|offset.{0,60}pressure|pressure.{0,60}offset',text,re.I))
             if frac:
+                report_well={str(int(x)) for x in re.findall(r'(?i)\bLicen[sc]e\s*#\s*:?\s*(\d{3,6})\b',text)}
+                same_well=report_well=={str(int(remote.rsplit('/',2)[-2]))} if remote.rsplit('/',2)[-2].isdigit() else False
+                measured=stage and same_well and re.search(r'Interval\s+\w+\s*[–-]\s*Service Report',text,re.I) and 'FRACTURING SERVICE REPORT' in text.upper()
                 for parameter,value,unit,raw in parameter_candidates(text):
-                    db.execute('insert into facts values(?,?,?,?,?,?,?,?)',(remote,i+1,stage,parameter,value,unit,raw,'literal_candidate_requires_context_review'))
-                chart_hint=bool(re.search(r'Treating\s+Pressure|Slurry\s+Rate|Treatment\s+Plot',text,re.I))
+                    db.execute('insert into facts values(?,?,?,?,?,?,?,?)',(remote,i+1,stage,parameter,value,unit,raw,'stage_service_report' if measured else 'literal_candidate_requires_context_review'))
+                chart_hint=bool(re.search(r'Entire\s+Treatment|Treatment\s+Part\s+[AB]|Treatment\s+(?:Plot|Chart)|(?:time|pressure)\s+vs\.?\s+(?:time|pressure)',text,re.I))
                 if chart_hint:
                     try:points=vector_features(path,i+1,text)
                     except Exception:points=[]
@@ -168,7 +180,7 @@ def extract_pdf(path,remote,db):
         return pages,'; '.join(sorted(templates)) or 'unclassified'
     finally:document.close()
 
-def process_wells(client,db,folder,shard,seconds):
+def process_wells(client,db,folder,shard,seconds,stop_after_facts=False):
     started=time.monotonic();folder=Path(folder)
     while time.monotonic()-started<seconds:
         row=db.execute('select path,wa from wells where done=0 order by cast(wa as integer) desc limit 1').fetchone()
@@ -185,6 +197,7 @@ def process_wells(client,db,folder,shard,seconds):
                            'on conflict(path) do update set is_current=excluded.is_current',
                            (r['full_path'],wa,r['Name'],r['LastModified'],r['Size'],family,int(r is best),'queued' if r is best else 'superseded'))
         db.commit();finished=True
+        latest.sort(key=lambda r:(bool(re.search(r'FLOWBACK|PROD.?EQUIP|ABANDON',r['Name'],re.I)), -int(r.get('Size',0))))
         for record in latest:
             if time.monotonic()-started>=seconds:finished=False;break
             remote=record['full_path'];existing=db.execute('select status from files where path=?',(remote,)).fetchone()[0]
@@ -200,7 +213,11 @@ def process_wells(client,db,folder,shard,seconds):
             except Exception as exc:
                 error=str(exc) if isinstance(exc,SourceError) else type(exc).__name__
                 db.execute("update files set status='deferred',error=? where path=?",(error,remote));db.commit()
-            print(json.dumps({'wa':wa,'report':record['Name'],'status':db.execute('select status from files where path=?',(remote,)).fetchone()[0]}),flush=True)
+            status,error=db.execute('select status,error from files where path=?',(remote,)).fetchone()
+            print(json.dumps({'wa':wa,'report':record['Name'],'status':status,'error':error}),flush=True)
+            if stop_after_facts and db.execute('select 1 from facts limit 1').fetchone():
+                snapshot(db,folder,'early_evidence',shard)
+                return
         if finished:db.execute('update wells set done=1 where path=?',(well_path,));db.commit()
         snapshot(db,folder,'extracting',shard)
     snapshot(db,folder,'extraction_checkpoint',shard)

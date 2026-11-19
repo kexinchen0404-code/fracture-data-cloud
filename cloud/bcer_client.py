@@ -7,6 +7,7 @@ import http.cookiejar
 import json
 import os
 import re
+import shutil
 import time
 import urllib.error
 import urllib.parse
@@ -90,9 +91,9 @@ class BCERClient:
             raise SourceError('unexpected_source_date_format')
         return dt.datetime.fromtimestamp(int(match[1])/1000,dt.timezone.utc).isoformat(timespec='milliseconds').replace('+00:00','Z')
 
-    def download(self, record, target, max_bytes=512*1024*1024):
+    def download(self, record, target):
         expected = int(record['Size'])
-        if expected>max_bytes:
+        if expected>shutil.disk_usage(Path(target).parent).free-64*1024*1024:
             raise SourceError('file_exceeds_cloud_temporary_file_budget')
         info = {k:record.get(k) for k in ['Name','Size','FileType','IsFolder','RelativePath','SessionStatGuid']}
         info.update(FullPath=record['full_path'],Created=self.iso_date(record['Created']),LastModified=self.iso_date(record['LastModified']))
@@ -105,8 +106,8 @@ class BCERClient:
         with self.opener.open(url, timeout=90) as source, Path(target).open('wb') as out:
             while block:=source.read(512*1024):
                 size+=len(block)
-                if size>max_bytes:
-                    raise SourceError('file_exceeds_cloud_temporary_file_budget')
+                if size>expected:
+                    raise SourceError('download_exceeds_directory_size')
                 digest.update(block);out.write(block)
         if size!=expected:
             raise SourceError('download_size_mismatch')

@@ -1,0 +1,40 @@
+name: Read first current BCER reports from all-well index
+on:
+  push:
+    branches: ['codex/bcer-all-wells']
+    paths: ['.github/workflows/bcer-preview.yml']
+permissions:
+  actions: read
+  contents: read
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        wa: [36587, 36589]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 44541449531
+          pattern: well-index-*
+          path: indexes
+      - run: python3 -m pip install --quiet 'pypdfium2>=4.30,<6' 'pdfplumber>=0.11.7,<0.12'
+      - name: Read revised source PDF and extract page evidence
+        env:
+          BCER_USERNAME: ${{ secrets.BCER_USERNAME }}
+          BCER_PASSWORD: ${{ secrets.BCER_PASSWORD }}
+          WELL: ${{ matrix.wa }}
+        run: python3 cloud/report_preview.py --wa "$WELL"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: report-evidence-${{ matrix.wa }}
+          path: result
+          retention-days: 14
