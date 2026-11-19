@@ -1,0 +1,107 @@
+name: Extract BCER fracture reports across all indexed wells
+on:
+  push:
+    branches: ['codex/bcer-all-wells']
+    paths: ['.github/workflows/bcer-process.yml', 'cloud/extraction_request.txt']
+  workflow_dispatch:
+concurrency:
+  group: bcer-current-report-extraction
+  cancel-in-progress: false
+env:
+  RESULT_TAG: bcer-report-index-44541449531-v1
+  INDEX_RUN: '44541449531'
+permissions:
+  actions: read
+  contents: read
+jobs:
+  queue:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    outputs:
+      groups: ${{ steps.partition.outputs.groups }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.INDEX_RUN }}
+          pattern: well-index-*
+          path: indexes
+      - id: partition
+        run: |
+          python3 cloud/report_queue.py --indexes indexes --groups 128
+          python3 -c 'import json;print("groups="+json.dumps(list(range(128))))' >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: current-well-queue
+          path: wells.csv.gz
+          retention-days: 30
+      - name: Prepare cloud storage for derived results
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$RESULT_TAG" >/dev/null 2>&1 || gh release create "$RESULT_TAG" --draft --target "$GITHUB_SHA" --title "BCER well report measurements" --notes "Current-source report indexes, page measurements and calibration checks. Source PDFs are processed temporarily on cloud runners."
+  extract:
+    needs: queue
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    permissions:
+      actions: read
+      contents: write
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        group: ${{ fromJSON(needs.queue.outputs.groups) }}
+    env:
+      GROUP: ${{ matrix.group }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: current-well-queue
+      - name: Restore most recent saved result for this group
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p result
+          gh release view "$RESULT_TAG" --json assets > assets.json
+          asset=$(python3 -c 'import json,os; a=[v for v in json.load(open("assets.json"))["assets"] if v["name"].startswith("group-"+os.environ["GROUP"]+"-") and v["name"].endswith(".sqlite.gz")];print(max(a,key=lambda v:v["createdAt"])["name"] if a else "")')
+          if [ -n "$asset" ]; then gh release download "$RESULT_TAG" --pattern "$asset"; gzip -dc "$asset" > result/extraction.sqlite; fi
+          python3 cloud/report_queue.py --group "$GROUP"
+      - run: python3 -m pip install --quiet 'pypdfium2>=4.30,<6' 'pdfplumber>=0.11.7,<0.12'
+      - name: Extract report text and calibrated chart features
+        env:
+          BCER_USERNAME: ${{ secrets.BCER_USERNAME }}
+          BCER_PASSWORD: ${{ secrets.BCER_PASSWORD }}
+        run: python3 cloud/bcer_bulk.py --phase extract --shard "$GROUP" --shards 128 --seconds 17400 --output result
+      - name: Save resumable derived measurements
+        id: save
+        if: always() && hashFiles('result/progress.json') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          result="group-$GROUP-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.sqlite.gz"
+          gzip -1 -c result/extraction.sqlite > "$result"
+          gzip -t "$result"
+          gh release upload "$RESULT_TAG" "$result"
+      - uses: actions/upload-artifact@v4
+        if: always() && hashFiles('result/progress.json') != ''
+        with:
+          name: progress-${{ matrix.group }}-${{ github.run_attempt }}
+          path: result/progress.json
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.save.outcome != 'success' && hashFiles('result/extraction.sqlite') != ''
+        with:
+          name: recovery-${{ matrix.group }}-${{ github.run_attempt }}
+          path: result/extraction.sqlite
+          retention-days: 14
+      - name: Verify group coverage
+        run: python3 -c 'import json; p=json.load(open("result/progress.json")); assert p["wells_pending"]==0 and p["wells_unresolved"]==0 and p["reports_failed_or_deferred"]==0, p'

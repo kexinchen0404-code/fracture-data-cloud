@@ -57,6 +57,8 @@ def snapshot(db,folder,phase,shard):
        'scope':'All well directories in assigned BCER source partitions; no 100-well limit',
        'directories_queued':count('select count(*) from directories'),'directories_pending':count('select count(*) from directories where done=0'),
        'wells_queued':count('select count(*) from wells'),'wells_processed':count('select count(*) from wells where done=1'),
+       'wells_unresolved':count('select count(*) from wells where done=2'),
+       'wells_pending':count('select count(*) from wells where done=0'),
        'current_reports':count('select count(*) from files where is_current=1'),
        'reports_text_processed':count("select count(*) from files where status='text_processed' and is_current=1"),
        'reports_failed_or_deferred':count("select count(*) from files where status='deferred' and is_current=1"),
@@ -74,7 +76,8 @@ def revision(record):
     rank=int(match[1] or 0)+1 if match else 0
     family=re.sub(r'[_ ]REVISED\d*','',name)
     family=re.sub(r'_INITIAL(?: COMP)?(?=\.PDF$)','',family)
-    return family,(rank,record.get('LastModified',''),name)
+    modified=re.search(r'\d{10,}',str(record.get('LastModified','')))
+    return family,(rank,int(modified[0]) if modified else 0,name)
 
 def index_source(client,db,folder,shard,shards,seconds):
     started=time.monotonic()
@@ -149,7 +152,7 @@ def vector_features(pdf_path,page_number,text):
             return output
         finally:page.close()
 
-def extract_pdf(path,remote,db):
+def extract_pdf(path,remote,db,wa):
     import pypdfium2 as pdfium
     document=pdfium.PdfDocument(path);templates=set();pages=len(document)
     try:
@@ -165,13 +168,13 @@ def extract_pdf(path,remote,db):
             hit=bool(re.search(r'frac[- ]?hit|fracture[- ]driven|offset.{0,60}pressure|pressure.{0,60}offset',text,re.I))
             if frac:
                 report_well={str(int(x)) for x in re.findall(r'(?i)\bLicen[sc]e\s*#\s*:?\s*(\d{3,6})\b',text)}
-                same_well=report_well=={str(int(remote.rsplit('/',2)[-2]))} if remote.rsplit('/',2)[-2].isdigit() else False
+                same_well=report_well=={str(int(wa))}
                 measured=stage and same_well and re.search(r'Interval\s+\w+\s*[–-]\s*Service Report',text,re.I) and 'FRACTURING SERVICE REPORT' in text.upper()
                 for parameter,value,unit,raw in parameter_candidates(text):
                     db.execute('insert into facts values(?,?,?,?,?,?,?,?)',(remote,i+1,stage,parameter,value,unit,raw,'stage_service_report' if measured else 'literal_candidate_requires_context_review'))
                 chart_hint=bool(re.search(r'Entire\s+Treatment|Treatment\s+Part\s+[AB]|Treatment\s+(?:Plot|Chart)|(?:time|pressure)\s+vs\.?\s+(?:time|pressure)',text,re.I))
                 if chart_hint:
-                    try:points=vector_features(path,i+1,text)
+                    try:points=vector_features(path,i+1,text) if stage and same_well else []
                     except Exception:points=[]
                     state='fracture_chart_vector_extracted' if points else 'fracture_chart_pending_review'
                     for point in points:
@@ -181,23 +184,40 @@ def extract_pdf(path,remote,db):
     finally:document.close()
 
 def process_wells(client,db,folder,shard,seconds,stop_after_facts=False):
-    started=time.monotonic();folder=Path(folder)
+    started=time.monotonic();folder=Path(folder);processed=0
     while time.monotonic()-started<seconds:
-        row=db.execute('select path,wa from wells where done=0 order by cast(wa as integer) desc limit 1').fetchone()
+        row=db.execute('select path,wa from wells where done=0 order by rowid limit 1').fetchone()
         if not row:break
-        well_path,wa=row;records=client.list_folder(well_path)
+        well_path,wa=row;records=[];visit=[well_path];visited=set()
+        try:
+            while visit:
+                path=visit.pop()
+                if path in visited:continue
+                visited.add(path)
+                for child in client.list_folder(path):
+                    if child.get('IsFolder'):
+                        if child['full_path'].startswith(well_path+'/'):visit.append(child['full_path'])
+                    else:records.append(child)
+        except SourceError as exc:
+            print(json.dumps({'wa':wa,'directory_error':str(exc)}),flush=True)
+            db.execute('update wells set done=2 where path=?',(well_path,));db.commit()
+            continue
         candidates=[r for r in records if not r.get('IsFolder') and r['Name'].upper().endswith('.PDF') and REPORT.search(r['Name'])]
         groups=collections.defaultdict(list)
-        for r in candidates:groups[revision(r)[0]].append(r)
+        for r in candidates:groups[(r['RelativePath'],revision(r)[0])].append(r)
         latest=[]
-        for family,items in groups.items():
+        db.execute('update files set is_current=0 where wa=? and path like ?', (wa,well_path+'/%'))
+        for (_,family),items in groups.items():
             best=max(items,key=lambda r:revision(r)[1]);latest.append(best)
             for r in items:
                 db.execute('insert into files(path,wa,name,modified,size,family,is_current,status) values(?,?,?,?,?,?,?,?) '
-                           'on conflict(path) do update set is_current=excluded.is_current',
+                           'on conflict(path) do update set is_current=excluded.is_current, '
+                           'status=case when files.modified!=excluded.modified or files.size!=excluded.size '
+                           "or (files.status='superseded' and excluded.is_current=1) then excluded.status else files.status end, "
+                           'modified=excluded.modified,size=excluded.size',
                            (r['full_path'],wa,r['Name'],r['LastModified'],r['Size'],family,int(r is best),'queued' if r is best else 'superseded'))
         db.commit();finished=True
-        latest.sort(key=lambda r:(bool(re.search(r'FLOWBACK|PROD.?EQUIP|ABANDON',r['Name'],re.I)), -int(r.get('Size',0))))
+        latest.sort(key=lambda r:(bool(re.search(r'FLOWBACK|PROD.?EQUIP|ABANDON|SLICKLINE|GASLIFT',r['Name'],re.I)), -int(r.get('Size',0))))
         for record in latest:
             if time.monotonic()-started>=seconds:finished=False;break
             remote=record['full_path'];existing=db.execute('select status from files where path=?',(remote,)).fetchone()[0]
@@ -208,7 +228,7 @@ def process_wells(client,db,folder,shard,seconds,stop_after_facts=False):
                     if pdf.open('rb').read(5)!=b'%PDF-':raise SourceError('download_is_not_pdf')
                     with db:
                         for table in ('facts','points','pages'):db.execute(f'delete from {table} where path=?',(remote,))
-                        pages,template=extract_pdf(pdf,remote,db)
+                        pages,template=extract_pdf(pdf,remote,db,wa)
                         db.execute("update files set status='text_processed',sha256=?,pages=?,template=?,error=null where path=?",(meta['sha256'],pages,template,remote))
             except Exception as exc:
                 error=str(exc) if isinstance(exc,SourceError) else type(exc).__name__
@@ -218,8 +238,11 @@ def process_wells(client,db,folder,shard,seconds,stop_after_facts=False):
             if stop_after_facts and db.execute('select 1 from facts limit 1').fetchone():
                 snapshot(db,folder,'early_evidence',shard)
                 return
-        if finished:db.execute('update wells set done=1 where path=?',(well_path,));db.commit()
-        snapshot(db,folder,'extracting',shard)
+        if finished:
+            unresolved=db.execute("select 1 from files where wa=? and is_current=1 and status='deferred' limit 1",(wa,)).fetchone()
+            db.execute('update wells set done=? where path=?',(2 if unresolved else 1,well_path));db.commit()
+        processed+=1
+        if processed%12==0:snapshot(db,folder,'extracting',shard)
     snapshot(db,folder,'extraction_checkpoint',shard)
 
 def main():
