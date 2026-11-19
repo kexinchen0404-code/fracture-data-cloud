@@ -1,0 +1,70 @@
+name: Assemble BCER report measurements
+on:
+  workflow_call:
+    inputs:
+      stage:
+        type: string
+        required: true
+permissions:
+  contents: write
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    concurrency:
+      group: ${{ inputs.stage == 'final' && 'bcer-current-report-extraction' || 'bcer-available-report-workbook' }}
+      cancel-in-progress: false
+    env:
+      STAGE: ${{ inputs.stage }}
+      RESULT_TAG: bcer-report-index-44541449531-v1
+      NATIVE_SHA: 45952efee934feb7ae02ee689482dd4b1fa8f4078ac3b6be467627007609f78c
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Open verified regulator data and report sheets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -m pip install --quiet 'xlsxwriter==3.2.9' 'lxml>=5,<7'
+          mkdir -p tmp/curve_read/merged_sheets data/bcer_current
+          unzip -q cloud/verified-report-sheets.zip -d tmp/curve_read/merged_sheets
+          cp tmp/curve_read/merged_sheets/source_manifest.json data/bcer_current/
+          asset="bcer-native-20261110-${NATIVE_SHA:0:12}.zip"
+          need_cache=0
+          if gh release download "$RESULT_TAG" --pattern "$asset" --dir data/bcer_current; then
+            mv "data/bcer_current/$asset" data/bcer_current/hydraulic_fracture_csv.zip
+          else
+            need_cache=1
+            curl --fail --location --retry 4 --silent --show-error https://iris.bcogc.ca/download/hydraulic_fracture_csv.zip -o data/bcer_current/hydraulic_fracture_csv.zip
+          fi
+          echo "$NATIVE_SHA  data/bcer_current/hydraulic_fracture_csv.zip" | sha256sum --check
+          if [ "$STAGE" = available ] && [ "$need_cache" = 1 ]; then
+            ln data/bcer_current/hydraulic_fracture_csv.zip "$asset"
+            gh release upload "$RESULT_TAG" "$asset"
+          fi
+      - name: Collect current group records and verify the workbook
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 cloud/build_bcer_all_wells.py
+          python3 cloud/compile_checkpoints.py --tag "$RESULT_TAG"
+          python3 cloud/merge_pdf_workbook.py
+          python3 cloud/verify_scientific_cells.py
+          ln outputs/*/*.xlsx BCER-fracture-stages-current.xlsx
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BCER-current-workbook-${{ inputs.stage }}
+          path: BCER-fracture-stages-current.xlsx
+          compression-level: 0
+          retention-days: 14
+      - name: Store workbook and coverage on the cloud
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp tmp/curve_read/merged_sheets/snapshot.json BCER-report-coverage-current.json
+          gh release upload "$RESULT_TAG" BCER-fracture-stages-current.xlsx BCER-report-coverage-current.json --clobber
+          gh release view "$RESULT_TAG" --json url --jq .url
+      - name: Verify final source coverage
+        if: inputs.stage == 'final'
+        run: python3 -c 'import json; s=json.load(open("BCER-report-coverage-current.json")); assert s["groups_saved"]==s["groups_expected"] and s["wells_complete"]==s["total_directories"] and s["reports_unresolved"]==0, s'

@@ -26,8 +26,20 @@ def col(i):
     return s
 def xml(root):return E.tostring(root,encoding='UTF-8',xml_declaration=True,standalone=True)
 
+def data_row(name,idx,values):
+    height=33 if idx==1 else 36 if name in ('使用说明','字段字典') else 18
+    row=E.Element(tag(N,'row'),r=str(idx),ht=str(height),customHeight='1')
+    for j,v in enumerate(values,1):
+        if v is None:continue
+        cell=E.SubElement(row,tag(N,'c'),r=col(j)+str(idx),s='2' if idx==1 else '4')
+        if isinstance(v,(int,float)):E.SubElement(cell,tag(N,'v')).text=str(v)
+        else:
+            cell.set('t','inlineStr')
+            E.SubElement(E.SubElement(cell,tag(N,'is')),tag(N,'t')).text=v
+    return row
 
-def worksheet(template,t,small):
+
+def worksheet(template,t,small,stream=None):
     root=copy.deepcopy(template);data=root.find(tag(N,'sheetData'))
     for row in list(data):data.remove(row)
     for c in root.findall('.//'+tag(N,'col')):c.attrib.pop('style',None)
@@ -39,22 +51,25 @@ def worksheet(template,t,small):
     if filt is None:
         filt=E.Element(tag(N,'autoFilter'));data.addnext(filt)
     filt.set('ref',ref)
-    def add(idx,values):
-        height=33 if idx==1 else 36 if t['name'] in ('使用说明','字段字典') else 18
-        row=E.SubElement(data,tag(N,'row'),r=str(idx),ht=str(height),customHeight='1')
-        for j,v in enumerate(values,1):
-            if v is None:continue
-            cell=E.SubElement(row,tag(N,'c'),r=col(j)+str(idx),s='2' if idx==1 else '4')
-            if isinstance(v,(int,float)):E.SubElement(cell,tag(N,'v')).text=str(v)
-            else:
-                cell.set('t','inlineStr')
-                E.SubElement(E.SubElement(cell,tag(N,'is')),tag(N,'t')).text=v
-    add(1,t['headers'])
+    if stream is not None:
+        with E.xmlfile(stream,encoding='UTF-8',close=False) as writer:
+            writer.write_declaration(standalone=True)
+            with writer.element(root.tag,root.attrib,nsmap=root.nsmap):
+                for child in root:
+                    if child.tag!=tag(N,'sheetData'):
+                        writer.write(child)
+                        continue
+                    with writer.element(child.tag,child.attrib):
+                        writer.write(data_row(t['name'],1,t['headers']))
+                        with (D/t['rows_file']).open(encoding='utf-8') as f:
+                            for i,line in enumerate(f,2):writer.write(data_row(t['name'],i,json.loads(line)))
+        return
+    data.append(data_row(t['name'],1,t['headers']))
     if small:
-        for i,r in enumerate(t['preview'],2):add(i,r)
+        for i,r in enumerate(t['preview'],2):data.append(data_row(t['name'],i,r))
     else:
         with (D/t['rows_file']).open(encoding='utf-8') as f:
-            for i,line in enumerate(f,2):add(i,json.loads(line))
+            for i,line in enumerate(f,2):data.append(data_row(t['name'],i,json.loads(line)))
     return xml(root)
 
 
@@ -99,8 +114,10 @@ def create(base,dest,small):
             if info.filename not in replacements and info.filename not in part_data:copy_part(src,out,info)
         for part,content in part_data.items():out.writestr(part,content)
         for part,(i,t) in replacements.items():
-            template=E.fromstring(donor.read(f'xl/worksheets/sheet{i}.xml'))
-            out.writestr(part,worksheet(template,t,small))
+            template=E.fromstring(donor.read(f"xl/worksheets/sheet{t.get('template_index',i)}.xml"))
+            if not small and t['count']>20000:
+                with out.open(part,'w',force_zip64=True) as stream:worksheet(template,t,small,stream)
+            else:out.writestr(part,worksheet(template,t,small))
     return {t['name']:part for part,(_,t) in replacements.items()}
 
 
