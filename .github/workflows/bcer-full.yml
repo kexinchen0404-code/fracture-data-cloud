@@ -1,0 +1,29 @@
+name: BCER full extraction
+on:
+  push:
+    branches: ['codex/bcer-all-wells']
+    paths: ['cloud/**', '.github/workflows/bcer-full.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: bcer-all-wells
+  cancel-in-progress: false
+jobs:
+  source-access:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify BCER credentials and read actual source directories
+        env:
+          BCER_USERNAME: ${{ secrets.BCER_USERNAME }}
+          BCER_PASSWORD: ${{ secrets.BCER_PASSWORD }}
+        run: python3 cloud/bcer_client.py --check-access --output results
+      - name: Preserve non-secret source verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bcer-source-access
+          path: results/access.json
+          retention-days: 1
