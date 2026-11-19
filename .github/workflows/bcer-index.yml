@@ -1,0 +1,40 @@
+name: Index BCER well directories
+on:
+  push:
+    branches: ['codex/bcer-all-wells']
+    paths: ['.github/workflows/bcer-index.yml', 'cloud/index_request.txt']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: bcer-directory-index
+  cancel-in-progress: false
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Read all assigned directories
+        env:
+          BCER_USERNAME: ${{ secrets.BCER_USERNAME }}
+          BCER_PASSWORD: ${{ secrets.BCER_PASSWORD }}
+          SHARD: ${{ matrix.shard }}
+        run: python3 cloud/bcer_bulk.py --phase index --shard "$SHARD" --shards 4 --seconds 3000 --output result
+      - name: Check directory coverage
+        run: python3 -c "import json; p=json.load(open('result/progress.json')); assert p['directories_pending']==0 and p['wells_queued']>0, p"
+      - name: Store the well queue
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: well-index-${{ matrix.shard }}
+          path: result/
+          if-no-files-found: error
+          retention-days: 30
