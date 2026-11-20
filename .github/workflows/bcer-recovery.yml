@@ -2,8 +2,18 @@ name: Recover remaining BCER reports and verify all-well workbook
 on:
   push:
     branches: ['codex/bcer-all-wells']
-    paths: ['.github/workflows/bcer-recovery.yml','cloud/recovery_request.json']
+    paths: ['cloud/recovery_request.json']
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      groups:
+        type: string
+        required: true
+    secrets:
+      BCER_USERNAME:
+        required: true
+      BCER_PASSWORD:
+        required: true
 permissions:
   contents: read
 env:
@@ -20,10 +30,13 @@ jobs:
         with:
           persist-credentials: false
       - id: list
+        env:
+          INPUT_GROUPS: ${{ inputs.groups }}
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import json,pathlib
-          request=json.loads(pathlib.Path('cloud/recovery_request.json').read_text())
+          import json,pathlib,os
+          request=({'groups':json.loads(os.environ['INPUT_GROUPS']),'publish':False,'audit':False}
+                   if os.environ.get('INPUT_GROUPS') else json.loads(pathlib.Path('cloud/recovery_request.json').read_text()))
           if isinstance(request,list):request={'groups':request}
           groups=request['groups']
           assert groups and len(groups)==len(set(groups)) and all(type(x)==int and 0<=x<128 for x in groups)
@@ -35,6 +48,8 @@ jobs:
     needs: select
     if: needs.select.outputs.audit == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -71,7 +86,11 @@ jobs:
       - name: Restore latest checked group
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 cloud/recover_reports.py restore --group "$GROUP"
+          INPUT_GROUPS: ${{ inputs.groups }}
+        run: |
+          options=()
+          if [ -n "$INPUT_GROUPS" ]; then options+=(--revisions-only); fi
+          python3 cloud/recover_reports.py restore --group "$GROUP" "${options[@]}"
       - name: Install readers for the failed source reports
         run: |
           python3 -m pip install --quiet 'pypdfium2>=4.30,<6' 'pdfplumber>=0.11.7,<0.12' 'PyMuPDF>=1.24,<2' pypdf
@@ -98,7 +117,11 @@ jobs:
             result/progress.json
           retention-days: 14
       - name: Reconcile source coverage
+        if: inputs.groups == ''
         run: python3 -c 'import json; v=json.load(open("result/progress.json")); assert v["wells_unresolved"]==v["wells_pending"]==v["reports_failed_or_deferred"]==0, v'
+      - name: Verify latest source revisions
+        if: inputs.groups != ''
+        run: PYTHONPATH=cloud python3 -c 'import sqlite3;from revision_audit import outdated; db=sqlite3.connect("result/extraction.sqlite"); assert not outdated(db)[0]'
   workbook:
     needs: [select, retry]
     if: always() && needs.select.outputs.publish == 'true' && needs.retry.result != 'cancelled'

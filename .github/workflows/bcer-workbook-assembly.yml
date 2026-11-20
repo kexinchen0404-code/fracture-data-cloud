@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 330
     concurrency:
-      group: ${{ inputs.stage == 'final' && 'bcer-current-report-extraction' || 'bcer-available-report-workbook' }}
+      group: ${{ (inputs.stage == 'final' || inputs.stage == 'latest-reviewed') && 'bcer-current-report-extraction' || 'bcer-available-report-workbook' }}
       cancel-in-progress: false
     env:
       STAGE: ${{ inputs.stage }}
@@ -53,6 +53,23 @@ jobs:
           python3 cloud/verify_scientific_cells.py
           python3 cloud/export_stage_catalog.py
           ln outputs/*/*.xlsx BCER-fracture-stages-current.xlsx
+      - name: Reconcile every well and missing-value state before publication
+        if: inputs.stage == 'latest-reviewed'
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          d=Path('tmp/curve_read/merged_sheets');s=json.loads((d/'snapshot.json').read_text())
+          assert s['groups_saved']==s['groups_expected']==128
+          assert s['wells_complete']+s['wells_unresolved']==s['directory_wells_indexed']==s['total_directories']
+          assert s['latest_wells']>=s['total_directories'] and s['wells_pending_in_saved_groups']==0
+          assert s['well_values_retained']+s['well_values_missing']+s['well_values_unsortable']==s['latest_wells']*s['latest_fields']
+          tabs=json.loads((d/'tabs.json').read_text());t=next(t for t in tabs if t['name']=='PDF未读报告')
+          unresolved=[json.loads(line) for line in (d/t['rows_file']).open(encoding='utf-8')]
+          assert len(unresolved)==s['unread_or_revision_held_rows'] and len(unresolved)>=s['reports_unresolved']>=s['wells_unresolved']
+          assert all(r[0] and r[1] and r[5] and r[6] and r[7] for r in unresolved)
+          print('WELL_STATES_VERIFIED',s['latest_wells'],s['latest_fields'],s['source_coverage_status'],len(unresolved))
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: verified-stage-catalog-${{ inputs.stage }}

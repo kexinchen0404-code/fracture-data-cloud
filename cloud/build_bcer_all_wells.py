@@ -160,6 +160,7 @@ fmt_num=wb.add_format({'font_name':'Microsoft YaHei','font_size':10,'num_format'
 fmt_int=wb.add_format({'font_name':'Microsoft YaHei','font_size':10,'num_format':'0'})
 fmt_date=wb.add_format({'font_name':'Microsoft YaHei','font_size':10,'num_format':'yyyy-mm-dd'})
 fmt_note=wb.add_format({'font_name':'Microsoft YaHei','font_size':10,'text_wrap':True,'valign':'top'})
+fmt_missing=wb.add_format({'bg_color':'#FFF1C2'})
 samples={};sheetrows={};numeric_errors=collections.Counter();quality=collections.Counter()
 
 def sheet(name,hs,width=16):
@@ -247,6 +248,7 @@ for name in ['hydraulic_fracture.csv','perf.csv','perf_net_interval.csv']:
         quality.update(flags);write(s,i,original(r,hs)+vals)
         if i%100000==0:print(json.dumps({'writing':name,'rows':i}),flush=True)
     s.autofilter(0,0,i,len(hs)+len(extra)-1)
+    s.conditional_format(1,0,i,len(hs)+len(extra)-1,{'type':'blanks','format':fmt_missing})
     print(json.dumps({'written':name,'rows':i}),flush=True)
 
 d=sheet('字段字典',['数据表','中文字段','源字段/计算方式','单位/说明'],24);d.set_column(2,2,52);d.set_column(3,3,75)

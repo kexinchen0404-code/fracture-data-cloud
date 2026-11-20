@@ -58,6 +58,12 @@ def worksheet(template,t,small,stream=None):
     if filt is None:
         filt=E.Element(tag(N,'autoFilter'));data.addnext(filt)
     filt.set('ref',ref)
+    if t.get('missing_range') and total>1:
+        first,last=t['missing_range'];start=col(first)+'2'
+        cf=E.Element(tag(N,'conditionalFormatting'),sqref=start+':'+col(last)+str(total))
+        rule=E.SubElement(cf,tag(N,'cfRule'),type='expression',dxfId='0',priority='1')
+        E.SubElement(rule,tag(N,'formula')).text=f'ISBLANK({start})'
+        filt.addnext(cf)
     if stream is not None:
         with E.xmlfile(stream,encoding='UTF-8',close=False) as writer:
             writer.write_declaration(standalone=True)

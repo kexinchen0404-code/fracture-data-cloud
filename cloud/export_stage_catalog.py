@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 from pathlib import Path
+import re
 from zipfile import ZipFile,ZIP_DEFLATED
 from lxml import etree as ET
 
@@ -23,7 +24,7 @@ def review_excerpt():
     """Keep the headers, widths, styles and first actual records of the changed views."""
     from merge_pdf_workbook import B,N,R,P,CT,APP,VT,tag,xml
     sample=io.BytesIO()
-    names={'PDF施工段参数','PDF射孔簇数','PDF未读报告'}
+    names={'PDF施工段参数','PDF射孔簇数','PDF未读报告','受损PDF片段','每井最新值','最新值取值依据','逐条缺失索引','缺失统计'}
     with ZipFile(B) as src,ZipFile(sample,'w',ZIP_DEFLATED) as out:
         book=ET.fromstring(src.read('xl/workbook.xml'));sheets=book.find(tag(N,'sheets'))
         for sheet in list(sheets):
@@ -52,14 +53,53 @@ def review_excerpt():
                 for e in root:
                     if e.tag==tag(N,'sheetData'):break
                     e=deepcopy(e)
-                    if e.tag==tag(N,'dimension'):e.set('ref','A1:'+kept[-1][-1].get('r'))
+                    if e.tag==tag(N,'dimension'):e.set('ref','A1:'+kept[0][-1].get('r')[:-1]+kept[-1].get('r'))
                     new.append(e)
                 data=ET.SubElement(new,tag(N,'sheetData'));data.extend(kept)
+                f.seek(max(0,src.getinfo(part).file_size-16384));tail=f.read()
+                end=re.search(rb'</(?:[\w.-]+:)?sheetData\s*>',tail)
+                if not end:raise ValueError('Workbook formatting footer unavailable')
+                wrapper=ET.tostring(ET.Element(root.tag,nsmap=root.nsmap))[:-2]+b'>'
+                footer=ET.fromstring(wrapper+tail[end.end():])
+                for e in footer.findall(tag(N,'conditionalFormatting')):
+                    e=deepcopy(e);e.set('sqref',re.sub(r'\d+$',kept[-1].get('r'),e.get('sqref')));new.append(e)
                 replacements[part]=xml(new)
         for n in src.namelist():
             if n in replacements:out.writestr(n,replacements[n])
             elif not n.startswith('xl/worksheets/'):out.writestr(n,src.read(n))
     return sample.getvalue()
+
+
+def latest_catalog(archive,tabs,snapshot):
+    meta=next(t for t in tabs if t['name']=='每井最新值');fields=meta['headers'][5:]
+    if len(fields)!=len(set(fields)):raise ValueError('Duplicate physical parameter label')
+    positions={label:i for i,label in enumerate(fields)}
+    parts=[];batch=[];size=0;n=0;previous=-1;totals=collections.Counter()
+    def save():
+        if not batch:return
+        name=f'latest-{len(parts)+1:04}.json'
+        body=json.dumps({'default_state':'missing','columns':['wa','name','retained_values','ambiguous_field_ids'],'rows':batch},ensure_ascii=False,separators=(',',':')).encode('utf-8')
+        archive.writestr(name,body)
+        parts.append({'file':name,'first':batch[0][0],'last':batch[-1][0],'rows':len(batch),'sha256':hashlib.sha256(body).hexdigest()})
+    for row in data_rows(tabs,'每井最新值'):
+        wa,name,kept,absent,ambiguous,*vals=row
+        if int(wa)<=previous:raise ValueError('Repeated or unordered well in the latest view')
+        previous=int(wa);n+=1
+        missing_ids=set(range(len(fields))) if absent=='全部工程字段' else set() if absent=='无' else {positions[k] for k in absent.split('、')}
+        undecided=[] if ambiguous=='无' else [positions[k] for k in ambiguous.split('、')]
+        values=[[i,v] for i,v in enumerate(vals) if v is not None]
+        if len(vals)!=len(fields) or kept!=len(values) or missing_ids & set(undecided) or missing_ids|set(undecided)!={i for i,v in enumerate(vals) if v is None}:raise ValueError('Missing labels and retained values disagree')
+        totals.update(retained=kept,missing=len(missing_ids),ambiguous=len(undecided))
+        item=[wa,name,values,undecided];length=len(json.dumps(item,ensure_ascii=False,separators=(',',':')).encode('utf-8'))+1
+        if batch and size+length>22000:
+            save();batch=[];size=0
+        batch.append(item);size+=length
+    save()
+    assert (n,totals['retained'],totals['missing'],totals['ambiguous'])==(snapshot['latest_wells'],snapshot['well_values_retained'],snapshot['well_values_missing'],snapshot['well_values_unsortable'])
+    explained=sum(r[5] for r in data_rows(tabs,'逐条缺失索引'))
+    required=sum(r[3] for r in data_rows(tabs,'缺失统计') if r[0] in ('压裂段明细','射孔段参数','簇与净射孔区间','PDF施工段参数'))
+    if explained!=required:raise ValueError('Missing-cell index does not reconcile with source and report counts')
+    return {'latest_fields':fields,'latest_parts':parts,'well_count':n,'latest_totals':dict(totals),'indexed_source_and_stage_missing_cells':explained}
 
 
 def export():
@@ -86,6 +126,7 @@ def export():
     assert (summary['wells'],summary['stage_rows'],sum(reported.values()),cluster_rows)==(
         snapshot['measurement_wells'],snapshot['stage_rows'],snapshot['measured_values'],snapshot['reported_cluster_rows'])
     with ZipFile('verified-stage-catalog.zip','w',ZIP_DEFLATED) as out:
+        summary.update(latest_catalog(out,tabs,snapshot))
         for wa,entries in sorted(by_well.items()):
             sources=sorted({(sha,name) for _,_,_,name,sha in entries})
             index={s:i for i,s in enumerate(sources)}
@@ -98,7 +139,7 @@ def export():
             summary['well_index'][wa]={'rows':len(rows),'sha256':hashlib.sha256(body).hexdigest()}
         out.writestr('index.json',json.dumps(summary,ensure_ascii=False))
         out.writestr('review.xlsx',review_excerpt())
-    print('FIELD_COUNTS',json.dumps({k:v for k,v in summary.items() if k!='well_index'},ensure_ascii=False),flush=True)
+    print('FIELD_COUNTS',json.dumps({k:v for k,v in summary.items() if k not in ('well_index','latest_parts','latest_fields')},ensure_ascii=False),flush=True)
 
 
 if __name__=='__main__':export()

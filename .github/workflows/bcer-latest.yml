@@ -1,0 +1,46 @@
+name: Publish latest well values and missing-data register
+on:
+  push:
+    branches: ['codex/bcer-all-wells']
+    paths: ['.github/workflows/bcer-latest.yml', 'cloud/latest_request.txt']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: bcer-latest-and-missing
+  cancel-in-progress: false
+jobs:
+  revision_audit:
+    runs-on: ubuntu-latest
+    outputs:
+      groups: ${{ steps.selection.outputs.groups }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Compare modification timestamps in all 128 source groups
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 cloud/revision_audit.py --tag bcer-report-index-44541449531-v1
+      - id: selection
+        run: python3 -c 'import json; a=json.load(open("revision-audit.json"));print("groups="+json.dumps(sorted(map(int,a["groups_to_refresh"]))))' >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-revision-audit
+          path: revision-audit.json
+          retention-days: 14
+  refresh:
+    needs: revision_audit
+    if: needs.revision_audit.outputs.groups != '[]'
+    uses: ./.github/workflows/bcer-recovery.yml
+    with:
+      groups: ${{ needs.revision_audit.outputs.groups }}
+    secrets:
+      BCER_USERNAME: ${{ secrets.BCER_USERNAME }}
+      BCER_PASSWORD: ${{ secrets.BCER_PASSWORD }}
+  workbook:
+    needs: [revision_audit,refresh]
+    if: always() && needs.revision_audit.result == 'success' && (needs.refresh.result == 'success' || needs.refresh.result == 'skipped')
+    uses: ./.github/workflows/bcer-workbook-assembly.yml
+    with:
+      stage: latest-reviewed

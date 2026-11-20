@@ -11,7 +11,7 @@ from report_checkpoints import checkpoint_assets,download_db
 from revision_audit import outdated
 
 
-def restore(tag,group,folder):
+def restore(tag,group,folder,revisions_only=False):
     folder.mkdir(exist_ok=True)
     asset=checkpoint_assets(tag)[group]
     dbpath=download_db(asset,folder);dbpath.replace(folder/'extraction.sqlite')
@@ -22,9 +22,9 @@ def restore(tag,group,folder):
         unresolved=db.execute('select count(*) from wells where done=2').fetchone()[0]
         queued=db.execute('select count(*) from wells where done=0').fetchone()[0]
         if queued:raise ValueError('Expected a completed first pass')
-        db.execute('update wells set done=0 where done=2')
+        if not revisions_only:db.execute('update wells set done=0 where done=2')
         db.executemany('update wells set done=0 where wa=?',((w,) for w in newer))
-        db.execute("update files set status='queued' where is_current=1 and status='deferred'")
+        if not revisions_only:db.execute("update files set status='queued' where is_current=1 and status='deferred'")
     (folder/'retry.json').write_text(json.dumps(before),'utf-8')
     print('CHECKPOINT',asset['name'],'WELLS',unresolved,'REPORTS',len(before),flush=True)
 
@@ -52,6 +52,7 @@ def retry(group,folder):
 
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('mode',choices=['restore','retry']);p.add_argument('--group',type=int,required=True)
-    p.add_argument('--out',default='result');args=p.parse_args();folder=Path(args.out)
-    if args.mode=='restore':restore(os.environ['RESULT_TAG'],args.group,folder)
+    p.add_argument('--out',default='result');p.add_argument('--revisions-only',action='store_true')
+    args=p.parse_args();folder=Path(args.out)
+    if args.mode=='restore':restore(os.environ['RESULT_TAG'],args.group,folder,args.revisions_only)
     else:retry(args.group,folder)
