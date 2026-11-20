@@ -11,6 +11,7 @@ import gzip
 import hashlib
 import json
 import math
+import mmap
 import os
 import re
 import shutil
@@ -178,10 +179,10 @@ def text_pages(path, reader):
             with pymupdf.open(path) as doc:
                 if doc.needs_pass:raise SourceError('pdf_requires_open_password')
                 for page in doc:yield page.get_text('text',sort=True)
-        except (RuntimeError,ValueError) as exc:
+        except Exception as exc:
             if isinstance(exc,SourceError):raise
             raise SourceError('mupdf_'+type(exc).__name__) from None
-    else:
+    elif reader=='poppler':
         if not shutil.which('pdftotext') or not shutil.which('pdfinfo'):
             raise SourceError('poppler_unavailable')
         env={**os.environ,'LC_ALL':'C'}
@@ -201,11 +202,43 @@ def text_pages(path, reader):
                     for page in parts:
                         n+=1;yield page
             if n!=int(pg[1]) or buffer.strip():raise SourceError('poppler_page_count_mismatch')
+    elif reader=='pypdf':
+        try:
+            from pypdf import PdfReader
+        except ImportError:
+            raise SourceError('pypdf_unavailable') from None
+        try:
+            with open(path,'rb') as f:
+                doc=PdfReader(f,strict=False)
+                for page in doc.pages:yield page.extract_text() or ''
+        except Exception as exc:
+            if type(exc).__name__ in ('FileNotDecryptedError','WrongPasswordError'):
+                raise SourceError('pdf_requires_open_password') from None
+            raise SourceError('pypdf_'+type(exc).__name__) from None
+    elif reader=='qpdf':
+        if not shutil.which('qpdf'):raise SourceError('qpdf_unavailable')
+        with tempfile.TemporaryDirectory() as tmp:
+            fixed=Path(tmp)/'reconstructed.pdf'
+            proc=subprocess.run(['qpdf',str(path),str(fixed)],capture_output=True,timeout=180)
+            if b'invalid password' in proc.stderr.lower():raise SourceError('pdf_requires_open_password')
+            if proc.returncode not in (0,3) or not fixed.is_file():raise SourceError('qpdf_cannot_reconstruct')
+            yield from text_pages(fixed,'pdfium')
+
+
+def source_structure(path):
+    # Object streams can hide page markers. These counts diagnose the source only.
+    with open(path,'rb') as f,mmap.mmap(f.fileno(),0,access=mmap.ACCESS_READ) as data:
+        return {'bytes':len(data),'eof_marker':data.rfind(b'%%EOF'),'xref_marker':data.rfind(b'startxref'),
+                'plain_page_markers':sum(1 for _ in re.finditer(rb'/Type\s*/Page\b',data)),
+                'object_stream':bool(re.search(rb'/ObjStm\b',data)),
+                'embedded_files':bool(re.search(rb'/(?:EmbeddedFiles|EmbeddedFile)\b',data)),
+                'encrypted_marker':bool(re.search(rb'/Encrypt\b',data)),
+                'additional_pdf_headers':sum(1 for _ in re.finditer(rb'%PDF-\d\.\d',data))-1}
 
 
 def extract_pdf(path,remote,db,wa):
     errors=[]
-    for reader in ('pdfium','mupdf','poppler'):
+    for reader in ('pdfium','mupdf','poppler','pypdf','qpdf'):
         if errors:
             for table in ('facts','points','pages'):db.execute(f'delete from {table} where path=?',(remote,))
         try:
@@ -217,6 +250,7 @@ def extract_pdf(path,remote,db,wa):
             if reason=='pdf_requires_open_password':break
             continue
         return pages,template,reader
+    print('UNREADABLE_SOURCE',json.dumps({'wa':wa,'path':remote,**source_structure(path)}),flush=True)
     raise SourceError(' / '.join(errors))
 
 
@@ -290,7 +324,11 @@ def process_wells(client,db,folder,shard,seconds,stop_after_facts=False):
             try:
                 with tempfile.TemporaryDirectory(prefix='bcer-report-') as scratch:
                     pdf=Path(scratch)/'source.pdf';meta=client.download(record,pdf)
-                    if pdf.open('rb').read(5)!=b'%PDF-':raise SourceError('download_is_not_pdf')
+                    with pdf.open('rb') as handle:
+                        if handle.read(5)!=b'%PDF-':raise SourceError('download_is_not_pdf')
+                    with db:
+                        db.execute('update files set sha256=?,pages=null,template=null where path=?',(meta['sha256'],remote))
+                    print('SOURCE_SIZE_HASH',json.dumps({'wa':wa,'bytes':meta['bytes'],'sha256':meta['sha256']}),flush=True)
                     with db:
                         for table in ('facts','points','pages'):db.execute(f'delete from {table} where path=?',(remote,))
                         pages,template,reader=extract_pdf(pdf,remote,db,wa)

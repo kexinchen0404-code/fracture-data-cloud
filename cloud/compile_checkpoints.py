@@ -65,7 +65,8 @@ def compile_all(assets):
     extra=dict(name=pending,headers=['井号 WA','施工段标签','PDF 页','报告参数代码','数值','原文单位','原文证据','报告文件','报告 SHA-256'],widths=[13,15,11,36,20,18,70,56,72],template_index=6)
     cluster_tab='PDF射孔簇数'
     clusters=dict(name=cluster_tab,headers=['井号 WA','报告段标签','PDF 页','报告列示簇数（簇）','归属证据','原文计数短语','报告文件','报告 SHA-256'],widths=[14,19,12,24,48,54,64,74],template_index=6,use_widths=True)
-    tables=[*TABS,extra,clusters]
+    unreadable=dict(name='PDF未读报告',headers=['井号 WA','报告文件','目录大小 B','已验证源文件 SHA-256','源目录修改时间','源路径','读取状态','具体原因'],widths=[13,54,19,73,30,102,20,84],template_index=6,use_widths=True)
+    tables=[*TABS,extra,clusters,unreadable]
     sinks={t['name']:Sink(t,i) for i,t in enumerate(tables)}
     seen=set();families={};cached={(r[0],r[4]):r for r in rows('PDF报告清单')};stats=collections.Counter();wells=set();plot_wells=set();plot_pages=0
     def measured(wa,sha,name,stage,page,values):
@@ -95,7 +96,9 @@ def compile_all(assets):
                     wa=str(r['wa']);name=r['name'];sha=r['sha256'];key=(wa,sha);path=r['path']
                     families[(wa,family(name))]=sha if r['status']=='text_processed' else None
                     if r['status']!='text_processed' or not sha:
-                        stats['reports_unresolved']+=1;continue
+                        stats['reports_unresolved']+=1
+                        sinks['PDF未读报告'].add([wa,name,r['size'],sha,r['modified'],path,r['status'],r['error']])
+                        continue
                     if key in seen:continue
                     seen.add(key)
                     ms=re.search(r'\d{10,}',r['modified'] or '')

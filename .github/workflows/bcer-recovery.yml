@@ -45,8 +45,8 @@ jobs:
         run: python3 cloud/recover_reports.py restore --group "$GROUP"
       - name: Install readers for the failed source reports
         run: |
-          python3 -m pip install --quiet 'pypdfium2>=4.30,<6' 'pdfplumber>=0.11.7,<0.12' 'PyMuPDF>=1.24,<2'
-          if ! command -v pdftotext >/dev/null; then sudo apt-get update -qq && sudo apt-get install -qy poppler-utils; fi
+          python3 -m pip install --quiet 'pypdfium2>=4.30,<6' 'pdfplumber>=0.11.7,<0.12' 'PyMuPDF>=1.24,<2' pypdf
+          if ! command -v pdftotext >/dev/null || ! command -v qpdf >/dev/null; then sudo apt-get update -qq && sudo apt-get install -qy poppler-utils qpdf; fi
       - name: Read original reports with page and SHA-256 checks
         env:
           BCER_USERNAME: ${{ secrets.BCER_USERNAME }}
