@@ -51,7 +51,13 @@ jobs:
           python3 cloud/compile_checkpoints.py --tag "$RESULT_TAG"
           python3 cloud/merge_pdf_workbook.py
           python3 cloud/verify_scientific_cells.py
+          python3 cloud/export_stage_catalog.py
           ln outputs/*/*.xlsx BCER-fracture-stages-current.xlsx
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-stage-catalog-${{ inputs.stage }}
+          path: verified-stage-catalog.zip
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
           name: BCER-current-workbook-${{ inputs.stage }}

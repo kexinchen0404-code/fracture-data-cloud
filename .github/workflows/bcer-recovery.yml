@@ -1,0 +1,79 @@
+name: Recover remaining BCER reports and verify all-well workbook
+on:
+  push:
+    branches: ['codex/bcer-all-wells']
+    paths: ['.github/workflows/bcer-recovery.yml','cloud/recovery_request.json']
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  RESULT_TAG: bcer-report-index-44541449531-v1
+jobs:
+  select:
+    runs-on: ubuntu-latest
+    outputs:
+      groups: ${{ steps.list.outputs.groups }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: list
+        run: python3 -c 'import json,pathlib; v=json.loads(pathlib.Path("cloud/recovery_request.json").read_text()); assert v and len(v)==len(set(v)) and all(type(x)==int and 0<=x<128 for x in v); print("groups="+json.dumps(v))' >> "$GITHUB_OUTPUT"
+  retry:
+    needs: select
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        group: ${{ fromJSON(needs.select.outputs.groups) }}
+    concurrency:
+      group: bcer-report-recovery-${{ matrix.group }}
+      cancel-in-progress: false
+    env:
+      GROUP: ${{ matrix.group }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Restore latest checked group
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 cloud/recover_reports.py restore --group "$GROUP"
+      - name: Install readers for the failed source reports
+        run: |
+          python3 -m pip install --quiet 'pypdfium2>=4.30,<6' 'pdfplumber>=0.11.7,<0.12' 'PyMuPDF>=1.24,<2'
+          if ! command -v pdftotext >/dev/null; then sudo apt-get update -qq && sudo apt-get install -qy poppler-utils; fi
+      - name: Read original reports with page and SHA-256 checks
+        env:
+          BCER_USERNAME: ${{ secrets.BCER_USERNAME }}
+          BCER_PASSWORD: ${{ secrets.BCER_PASSWORD }}
+        run: python3 cloud/recover_reports.py retry --group "$GROUP"
+      - name: Save verified recovery checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          name="group-$GROUP-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.sqlite.gz"
+          gzip -1 -c result/extraction.sqlite > "$name"
+          gzip -t "$name"
+          gh release upload "$RESULT_TAG" "$name"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: recovery-receipt-${{ matrix.group }}-${{ github.run_attempt }}
+          path: |
+            result/receipts.json
+            result/progress.json
+          retention-days: 14
+      - name: Reconcile source coverage
+        run: python3 -c 'import json; v=json.load(open("result/progress.json")); assert v["wells_unresolved"]==v["wells_pending"]==v["reports_failed_or_deferred"]==0, v'
+  workbook:
+    needs: retry
+    if: always() && needs.retry.result != 'cancelled'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/bcer-workbook-assembly.yml
+    with:
+      stage: final

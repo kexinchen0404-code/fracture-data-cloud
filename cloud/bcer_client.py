@@ -27,7 +27,8 @@ class BCERClient:
         self.last_request = 0.0
 
     def post(self, method, payload, allow_error=False):
-        for attempt in range(2):
+        retry_read=method in ('GetFileTree','GetFileSubTree','GetDownloadingFileInfo','IsLoggedIn')
+        for attempt in range(3 if retry_read else 2):
             time.sleep(max(0, self.delay-(time.monotonic()-self.last_request)))
             headers = {'Content-Type':'application/json; charset=UTF-8',
                        'Referer':HOST+'/ThinClient/WTM/public/main'}
@@ -39,7 +40,16 @@ class BCERClient:
                 with self.opener.open(request, timeout=60) as response:
                     result = json.loads(response.read(16*1024*1024)).get('d', {})
             except urllib.error.HTTPError as exc:
+                if retry_read and attempt<2 and exc.code in (429,500,502,503,504):
+                    delay=exc.headers.get('Retry-After','')
+                    if delay.isdigit() and int(delay)>120:raise SourceError(f'{method}: HTTP {exc.code} retry delayed') from None
+                    time.sleep(max(2**attempt,int(delay) if delay.isdigit() else 0))
+                    continue
                 raise SourceError(f'{method}: HTTP {exc.code}') from None
+            except (urllib.error.URLError,TimeoutError,ConnectionError) as exc:
+                if retry_read and attempt<2:
+                    time.sleep(2**attempt);continue
+                raise SourceError(f'{method}: {type(exc).__name__}') from None
             except Exception as exc:
                 # Never echo request bodies, cookies, redirect URLs, or secret values.
                 raise SourceError(f'{method}: {type(exc).__name__}') from None

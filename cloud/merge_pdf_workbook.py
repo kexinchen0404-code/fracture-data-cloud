@@ -43,6 +43,13 @@ def worksheet(template,t,small,stream=None):
     root=copy.deepcopy(template);data=root.find(tag(N,'sheetData'))
     for row in list(data):data.remove(row)
     for c in root.findall('.//'+tag(N,'col')):c.attrib.pop('style',None)
+    if t.get('use_widths'):
+        cols=root.find(tag(N,'cols'))
+        if cols is None:
+            cols=E.Element(tag(N,'cols'));data.addprevious(cols)
+        for c in list(cols):cols.remove(c)
+        for idx,width in enumerate(t['widths'],1):
+            E.SubElement(cols,tag(N,'col'),min=str(idx),max=str(idx),width=str(width),customWidth='1')
     total=1+(len(t['preview']) if small else t['count'])
     ref='A1:'+col(len(t['headers']))+str(total)
     dim=root.find(tag(N,'dimension'))

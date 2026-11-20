@@ -4,20 +4,16 @@ import collections
 import datetime as dt
 from decimal import Decimal
 import csv
-import gzip
-import hashlib
 import io
 import json
-import os
 from pathlib import Path
 import re
-import shutil
 import sqlite3
-import subprocess
 import tempfile
 from zipfile import ZipFile
 
 from prepare_pdf_sheets import PARAM,SERIES,FEATURE,REVIEW
+from report_checkpoints import checkpoint_assets,download_db
 
 D=Path('tmp/curve_read/merged_sheets')
 TABS=json.loads((D/'tabs.json').read_text(encoding='utf-8'))
@@ -49,34 +45,6 @@ class Sink:
         t['count']+=1
 
 
-def api_json(*parts):
-    return json.loads(subprocess.check_output(['gh',*parts]))
-
-
-def checkpoint_assets(tag):
-    repo=os.environ['GITHUB_REPOSITORY']
-    rid=api_json('release','view',tag,'--json','databaseId')['databaseId']
-    pages=api_json('api','--paginate','--slurp',f'repos/{repo}/releases/{rid}/assets?per_page=100')
-    assets={}
-    for a in (a for page in pages for a in page):
-        match=re.fullmatch(r'group-(\d+)-\d+-\d+\.sqlite\.gz',a['name'])
-        if match:
-            group=int(match[1])
-            if group not in assets or a['created_at']>assets[group]['created_at']:assets[group]=a
-    return assets
-
-
-def download_db(asset,folder):
-    gz=Path(folder)/'data.gz';db=Path(folder)/'data.sqlite'
-    with gz.open('wb') as f:subprocess.run(['gh','api','-H','Accept: application/octet-stream',f"repos/{os.environ['GITHUB_REPOSITORY']}/releases/assets/{asset['id']}"],stdout=f,check=True)
-    if gz.stat().st_size!=asset['size']:raise ValueError('Checkpoint transfer size mismatch')
-    if asset.get('digest',''):
-        with gz.open('rb') as f:
-            if asset['digest']!='sha256:'+hashlib.file_digest(f,'sha256').hexdigest():raise ValueError('Checkpoint transfer hash mismatch')
-    with gzip.open(gz,'rb') as source,db.open('wb') as dest:shutil.copyfileobj(source,dest,1<<20)
-    return db
-
-
 def official_stages():
     out=collections.defaultdict(list)
     fields=[k for k,v in PARAM.items() if v[3]]
@@ -95,7 +63,9 @@ def compile_all(assets):
     native=official_stages()
     pending='PDF参数待核对'
     extra=dict(name=pending,headers=['井号 WA','施工段标签','PDF 页','报告参数代码','数值','原文单位','原文证据','报告文件','报告 SHA-256'],widths=[13,15,11,36,20,18,70,56,72],template_index=6)
-    tables=[*TABS,extra]
+    cluster_tab='PDF射孔簇数'
+    clusters=dict(name=cluster_tab,headers=['井号 WA','报告段标签','PDF 页','报告列示簇数（簇）','归属证据','原文计数短语','报告文件','报告 SHA-256'],widths=[14,19,12,24,48,54,64,74],template_index=6,use_widths=True)
+    tables=[*TABS,extra,clusters]
     sinks={t['name']:Sink(t,i) for i,t in enumerate(tables)}
     seen=set();families={};cached={(r[0],r[4]):r for r in rows('PDF报告清单')};stats=collections.Counter();wells=set();plot_wells=set();plot_pages=0
     def measured(wa,sha,name,stage,page,values):
@@ -131,6 +101,12 @@ def compile_all(assets):
                     ms=re.search(r'\d{10,}',r['modified'] or '')
                     stamp=dt.datetime.fromtimestamp(int(ms[0])/1000,dt.timezone.utc).isoformat() if ms else None
                     sinks['PDF报告清单'].add([wa,name,r['pages'],r['size'],sha,stamp,path,'云端读取',r['template']])
+                    for q in db.execute("select distinct page,stage_label,value,raw_text,status from facts where path=? and parameter='cluster_count_reported' and unit='count' order by page,stage_label,value,raw_text",(path,)):
+                        value=q['value']
+                        if value is None or value<0 or not float(value).is_integer():continue
+                        matched=q['status']=='stage_service_report' and bool(q['stage_label'])
+                        evidence='同井同段施工服务报告' if matched else '原文提及，所属段和设计或施工口径待核'
+                        sinks[cluster_tab].add([wa,q['stage_label'],q['page'],int(value),evidence,q['raw_text'],name,sha])
                     if key in cached:continue
                     accepted=collections.defaultdict(dict);bad=set()
                     for q in db.execute('select * from facts where path=? order by page',(path,)):
@@ -169,9 +145,11 @@ def compile_all(assets):
         if (row[0],row[-1]) in current_keys:sinks['待复核图页'].add(row)
     for row in rows('字段字典'):sinks['字段字典'].add(row)
     sinks['字段字典'].add([pending,'原文证据','PDF 本页局部文字','需核实所指井、所属施工段、单位和实际施工工况后再用于定量分析。'])
+    sinks['字段字典'].add([cluster_tab,'报告列示簇数','原文明确列出 number of clusters 等计数短语','单位为簇。同一页可能记载多次作业或设计参数，按页和原文回查。实际进液簇数另需监测证据。该页也可能出现在 PDF参数待核对。'])
     stats.update(groups_saved=len(assets),groups_expected=128,total_directories=23702,measurement_wells=len(wells),curve_wells=len(plot_wells),curve_pages=plot_pages)
     stats.setdefault('reports_unresolved',0)
     stats.update({key:sum(p['count'] for p in sinks[name].parts) for key,name in [('reports','PDF报告清单'),('feature_points','PDF曲线特征点'),('review_pages','待复核图页'),('candidate_rows',pending)]})
+    stats['reported_cluster_rows']=sum(p['count'] for p in sinks[cluster_tab].parts)
     for row in rows('使用说明'):
         if row[0]=='PDF补充范围':
             row[1]=f"已汇总 {len(assets)}/128 个云端分组及已有核实报告。{len(wells)} 口井有明确页码的施工段参数，共 {stats['stage_rows']} 条报告段记录。曲线数值精度见原图半线宽与坐标残差。"

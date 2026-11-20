@@ -13,7 +13,9 @@ import json
 import math
 import os
 import re
+import shutil
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import time
@@ -152,14 +154,77 @@ def vector_features(pdf_path,page_number,text):
             return output
         finally:page.close()
 
+def text_pages(path, reader):
+    """Yield one complete page at a time, in original PDF order."""
+    if reader == 'pdfium':
+        import pypdfium2 as pdfium
+        try:
+            with pdfium.PdfDocument(path) as doc:
+                for idx in range(len(doc)):
+                    page=doc[idx]
+                    try:
+                        tp=page.get_textpage()
+                        try:yield tp.get_text_bounded()
+                        finally:tp.close()
+                    finally:page.close()
+        except pdfium.PdfiumError as exc:
+            raise SourceError('pdfium_read_error_'+str(getattr(exc,'err_code','unknown'))) from None
+    elif reader == 'mupdf':
+        try:
+            import pymupdf
+        except ImportError:
+            raise SourceError('mupdf_unavailable') from None
+        try:
+            with pymupdf.open(path) as doc:
+                if doc.needs_pass:raise SourceError('pdf_requires_open_password')
+                for page in doc:yield page.get_text('text',sort=True)
+        except (RuntimeError,ValueError) as exc:
+            if isinstance(exc,SourceError):raise
+            raise SourceError('mupdf_'+type(exc).__name__) from None
+    else:
+        if not shutil.which('pdftotext') or not shutil.which('pdfinfo'):
+            raise SourceError('poppler_unavailable')
+        env={**os.environ,'LC_ALL':'C'}
+        info=subprocess.run(['pdfinfo',str(path)],capture_output=True,env=env,timeout=90)
+        if b'incorrect password' in info.stderr.lower():raise SourceError('pdf_requires_open_password')
+        pg=re.search(rb'(?m)^Pages:\s*(\d+)\s*$',info.stdout)
+        if info.returncode or not pg:raise SourceError('poppler_cannot_read_page_tree')
+        with tempfile.TemporaryDirectory() as tmp:
+            out=Path(tmp)/'pages.txt'
+            result=subprocess.run(['pdftotext','-layout','-enc','UTF-8',str(path),str(out)],
+                                  capture_output=True,env=env,timeout=300)
+            if result.returncode:raise SourceError('poppler_text_error_'+str(result.returncode))
+            n=0;buffer=''
+            with out.open(encoding='utf-8') as f:
+                while chunk:=f.read(65536):
+                    parts=(buffer+chunk).split('\f');buffer=parts.pop()
+                    for page in parts:
+                        n+=1;yield page
+            if n!=int(pg[1]) or buffer.strip():raise SourceError('poppler_page_count_mismatch')
+
+
 def extract_pdf(path,remote,db,wa):
-    import pypdfium2 as pdfium
-    document=pdfium.PdfDocument(path);templates=set();pages=len(document)
+    errors=[]
+    for reader in ('pdfium','mupdf','poppler'):
+        if errors:
+            for table in ('facts','points','pages'):db.execute(f'delete from {table} where path=?',(remote,))
+        try:
+            pages,template=store_pdf_pages(path,remote,db,wa,text_pages(path,reader))
+            if not pages:raise SourceError(reader+'_empty_page_tree')
+        except (SourceError,subprocess.TimeoutExpired) as exc:
+            reason=str(exc) if isinstance(exc,SourceError) else reader+'_timeout'
+            errors.append(reason)
+            if reason=='pdf_requires_open_password':break
+            continue
+        return pages,template,reader
+    raise SourceError(' / '.join(errors))
+
+
+def store_pdf_pages(path,remote,db,wa,text_iter):
+    templates=set();pages=0
     try:
-        for i in range(pages):
-            page=document[i];textpage=page.get_textpage()
-            try:text=textpage.get_text_bounded()
-            finally:textpage.close();page.close()
+        for i,text in enumerate(text_iter):
+            pages=i+1
             template=next((s for s in ['HALLIBURTON','CALFRAC','TRICAN','SCHLUMBERGER','STEP ENERGY','BAKER HUGHES'] if s in text.upper()),None)
             if template:templates.add(template)
             frac=bool(FRACTURE.search(text));stage=stage_label(text)
@@ -181,7 +246,7 @@ def extract_pdf(path,remote,db,wa):
                         db.execute('insert into points values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(remote,i+1,stage,*point))
             db.execute('insert or replace into pages values(?,?,?,?,?,?,?)',(remote,i+1,stage,len(text),state,formation,int(hit)))
         return pages,'; '.join(sorted(templates)) or 'unclassified'
-    finally:document.close()
+    finally:text_iter.close()
 
 def process_wells(client,db,folder,shard,seconds,stop_after_facts=False):
     started=time.monotonic();folder=Path(folder);processed=0
@@ -228,8 +293,9 @@ def process_wells(client,db,folder,shard,seconds,stop_after_facts=False):
                     if pdf.open('rb').read(5)!=b'%PDF-':raise SourceError('download_is_not_pdf')
                     with db:
                         for table in ('facts','points','pages'):db.execute(f'delete from {table} where path=?',(remote,))
-                        pages,template=extract_pdf(pdf,remote,db,wa)
+                        pages,template,reader=extract_pdf(pdf,remote,db,wa)
                         db.execute("update files set status='text_processed',sha256=?,pages=?,template=?,error=null where path=?",(meta['sha256'],pages,template,remote))
+                        print(json.dumps({'wa':wa,'current_file':record['Name'],'pages':pages,'bytes':meta['bytes'],'sha256':meta['sha256'],'reader':reader}),flush=True)
             except Exception as exc:
                 error=str(exc) if isinstance(exc,SourceError) else type(exc).__name__
                 db.execute("update files set status='deferred',error=? where path=?",(error,remote));db.commit()
