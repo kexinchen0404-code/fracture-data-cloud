@@ -51,6 +51,8 @@ def state_db(folder):
     CREATE TABLE IF NOT EXISTS points(path TEXT,page INTEGER,stage_label TEXT,series TEXT,unit TEXT,
       feature TEXT,path_id INTEGER,time_local TEXT,value REAL,x_pdf_pt REAL,y_pdf_pt REAL,
       axis_residual REAL,time_residual_seconds REAL,line_half_width REAL,status TEXT);
+    CREATE TABLE IF NOT EXISTS fragments(path TEXT,object_id INTEGER,generation INTEGER,byte_offset INTEGER,
+      status TEXT,text_chars INTEGER,stage_label TEXT,parameters TEXT,PRIMARY KEY(path,object_id,generation));
     ''')
     return db
 
@@ -80,7 +82,7 @@ def revision(record):
     family=re.sub(r'[_ ]REVISED\d*','',name)
     family=re.sub(r'_INITIAL(?: COMP)?(?=\.PDF$)','',family)
     modified=re.search(r'\d{10,}',str(record.get('LastModified','')))
-    return family,(rank,int(modified[0]) if modified else 0,name)
+    return family,(int(modified[0]) if modified else 0,rank,name)
 
 def index_source(client,db,folder,shard,shards,seconds):
     started=time.monotonic()
@@ -223,6 +225,9 @@ def text_pages(path, reader):
             if b'invalid password' in proc.stderr.lower():raise SourceError('pdf_requires_open_password')
             if proc.returncode not in (0,3) or not fixed.is_file():raise SourceError('qpdf_cannot_reconstruct')
             yield from text_pages(fixed,'pdfium')
+    elif reader=='original_tree':
+        from bcer_damaged import original_tree_text
+        yield from original_tree_text(path)
 
 
 def source_structure(path):
@@ -238,7 +243,7 @@ def source_structure(path):
 
 def extract_pdf(path,remote,db,wa):
     errors=[]
-    for reader in ('pdfium','mupdf','poppler','pypdf','qpdf'):
+    for reader in ('pdfium','mupdf','poppler','pypdf','qpdf','original_tree'):
         if errors:
             for table in ('facts','points','pages'):db.execute(f'delete from {table} where path=?',(remote,))
         try:
@@ -313,13 +318,14 @@ def process_wells(client,db,folder,shard,seconds,stop_after_facts=False):
                            'on conflict(path) do update set is_current=excluded.is_current, '
                            'status=case when files.modified!=excluded.modified or files.size!=excluded.size '
                            "or (files.status='superseded' and excluded.is_current=1) then excluded.status else files.status end, "
+                           'sha256=case when files.modified!=excluded.modified or files.size!=excluded.size then null else files.sha256 end, '
                            'modified=excluded.modified,size=excluded.size',
                            (r['full_path'],wa,r['Name'],r['LastModified'],r['Size'],family,int(r is best),'queued' if r is best else 'superseded'))
         db.commit();finished=True
         latest.sort(key=lambda r:(bool(re.search(r'FLOWBACK|PROD.?EQUIP|ABANDON|SLICKLINE|GASLIFT',r['Name'],re.I)), -int(r.get('Size',0))))
         for record in latest:
             if time.monotonic()-started>=seconds:finished=False;break
-            remote=record['full_path'];existing=db.execute('select status from files where path=?',(remote,)).fetchone()[0]
+            remote=record['full_path'];existing,previous_sha=db.execute('select status,sha256 from files where path=?',(remote,)).fetchone()
             if existing in ('text_processed','deferred'):continue
             try:
                 with tempfile.TemporaryDirectory(prefix='bcer-report-') as scratch:
@@ -328,12 +334,28 @@ def process_wells(client,db,folder,shard,seconds,stop_after_facts=False):
                         if handle.read(5)!=b'%PDF-':raise SourceError('download_is_not_pdf')
                     with db:
                         db.execute('update files set sha256=?,pages=null,template=null where path=?',(meta['sha256'],remote))
-                    print('SOURCE_SIZE_HASH',json.dumps({'wa':wa,'bytes':meta['bytes'],'sha256':meta['sha256']}),flush=True)
-                    with db:
-                        for table in ('facts','points','pages'):db.execute(f'delete from {table} where path=?',(remote,))
-                        pages,template,reader=extract_pdf(pdf,remote,db,wa)
-                        db.execute("update files set status='text_processed',sha256=?,pages=?,template=?,error=null where path=?",(meta['sha256'],pages,template,remote))
-                        print(json.dumps({'wa':wa,'current_file':record['Name'],'pages':pages,'bytes':meta['bytes'],'sha256':meta['sha256'],'reader':reader}),flush=True)
+                    print('SOURCE_SIZE_HASH',json.dumps({'wa':wa,'bytes':meta['bytes'],'sha256':meta['sha256'],'matches_prior_transfer':meta['sha256']==previous_sha}),flush=True)
+                    try:
+                        with db:
+                            for table in ('facts','points','pages','fragments'):db.execute(f'delete from {table} where path=?',(remote,))
+                            pages,template,reader=extract_pdf(pdf,remote,db,wa)
+                            db.execute("update files set status='text_processed',sha256=?,pages=?,template=?,error=null where path=?",(meta['sha256'],pages,template,remote))
+                            print(json.dumps({'wa':wa,'current_file':record['Name'],'pages':pages,'bytes':meta['bytes'],'sha256':meta['sha256'],'reader':reader}),flush=True)
+                    except SourceError as exc:
+                        if 'pdf_requires_open_password' not in str(exc) and source_structure(pdf)['eof_marker']==-1:
+                            from bcer_damaged import fragment_rows
+                            count=0
+                            try:
+                                with db:
+                                    db.execute('delete from fragments where path=?',(remote,))
+                                    for obj,gen,offset,state,txt in fragment_rows(pdf):
+                                        values=parameter_candidates(txt)
+                                        db.execute('insert into fragments values(?,?,?,?,?,?,?,?)',(remote,obj,gen,offset,state,len(txt),stage_label(txt),json.dumps(values,ensure_ascii=False)))
+                                        count+=1
+                                print('SOURCE_FRAGMENTS',json.dumps({'wa':wa,'objects':count}),flush=True)
+                            except Exception as fragment_error:
+                                print('SOURCE_FRAGMENT_ERROR',json.dumps({'wa':wa,'type':type(fragment_error).__name__}),flush=True)
+                        raise
             except Exception as exc:
                 error=str(exc) if isinstance(exc,SourceError) else type(exc).__name__
                 db.execute("update files set status='deferred',error=? where path=?",(error,remote));db.commit()

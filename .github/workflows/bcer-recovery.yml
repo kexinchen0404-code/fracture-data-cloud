@@ -13,12 +13,41 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       groups: ${{ steps.list.outputs.groups }}
+      publish: ${{ steps.list.outputs.publish }}
+      audit: ${{ steps.list.outputs.audit }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - id: list
-        run: python3 -c 'import json,pathlib; v=json.loads(pathlib.Path("cloud/recovery_request.json").read_text()); assert v and len(v)==len(set(v)) and all(type(x)==int and 0<=x<128 for x in v); print("groups="+json.dumps(v))' >> "$GITHUB_OUTPUT"
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json,pathlib
+          request=json.loads(pathlib.Path('cloud/recovery_request.json').read_text())
+          if isinstance(request,list):request={'groups':request}
+          groups=request['groups']
+          assert groups and len(groups)==len(set(groups)) and all(type(x)==int and 0<=x<128 for x in groups)
+          print('groups='+json.dumps(groups))
+          print('publish='+str(request.get('publish',True)).lower())
+          print('audit='+str(request.get('audit',False)).lower())
+          PY
+  revisions:
+    needs: select
+    if: needs.select.outputs.audit == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check all report families for a newer source modification
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 cloud/revision_audit.py --tag "$RESULT_TAG"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: revision-audit
+          path: revision-audit.json
+          retention-days: 14
   retry:
     needs: select
     runs-on: ubuntu-latest
@@ -47,6 +76,7 @@ jobs:
         run: |
           python3 -m pip install --quiet 'pypdfium2>=4.30,<6' 'pdfplumber>=0.11.7,<0.12' 'PyMuPDF>=1.24,<2' pypdf
           if ! command -v pdftotext >/dev/null || ! command -v qpdf >/dev/null; then sudo apt-get update -qq && sudo apt-get install -qy poppler-utils qpdf; fi
+          if ! command -v tesseract >/dev/null; then sudo apt-get update -qq && sudo apt-get install -qy tesseract-ocr tesseract-ocr-eng; fi
       - name: Read original reports with page and SHA-256 checks
         env:
           BCER_USERNAME: ${{ secrets.BCER_USERNAME }}
@@ -70,8 +100,8 @@ jobs:
       - name: Reconcile source coverage
         run: python3 -c 'import json; v=json.load(open("result/progress.json")); assert v["wells_unresolved"]==v["wells_pending"]==v["reports_failed_or_deferred"]==0, v'
   workbook:
-    needs: retry
-    if: always() && needs.retry.result != 'cancelled'
+    needs: [select, retry]
+    if: always() && needs.select.outputs.publish == 'true' && needs.retry.result != 'cancelled'
     permissions:
       contents: write
     uses: ./.github/workflows/bcer-workbook-assembly.yml

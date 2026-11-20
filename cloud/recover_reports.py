@@ -8,6 +8,7 @@ import sqlite3
 from bcer_bulk import process_wells,state_db
 from bcer_client import BCERClient
 from report_checkpoints import checkpoint_assets,download_db
+from revision_audit import outdated
 
 
 def restore(tag,group,folder):
@@ -16,11 +17,13 @@ def restore(tag,group,folder):
     dbpath=download_db(asset,folder);dbpath.replace(folder/'extraction.sqlite')
     (folder/'data.gz').unlink()
     with sqlite3.connect(folder/'extraction.sqlite') as db:
+        newer,_=outdated(db)
         before=db.execute("select wa,path,status,error from files where is_current=1 and status='deferred' order by wa,path").fetchall()
         unresolved=db.execute('select count(*) from wells where done=2').fetchone()[0]
         queued=db.execute('select count(*) from wells where done=0').fetchone()[0]
         if queued:raise ValueError('Expected a completed first pass')
         db.execute('update wells set done=0 where done=2')
+        db.executemany('update wells set done=0 where wa=?',((w,) for w in newer))
         db.execute("update files set status='queued' where is_current=1 and status='deferred'")
     (folder/'retry.json').write_text(json.dumps(before),'utf-8')
     print('CHECKPOINT',asset['name'],'WELLS',unresolved,'REPORTS',len(before),flush=True)
@@ -38,6 +41,7 @@ def retry(group,folder):
             row=dict(db.execute('select wa,path,name,is_current,status,sha256,pages,error from files where path=?',(path,)).fetchone())
             row['previous_error']=old_error
             row['page_classes']=dict(db.execute('select status,count(*) from pages where path=? group by status',(path,)))
+            row['fragment_classes']=dict(db.execute('select status,count(*) from fragments where path=? group by status',(path,)))
             if row['status']=='text_processed' and (not row['sha256'] or not row['pages'] or sum(row['page_classes'].values())!=row['pages']):
                 raise ValueError('Report page inventory did not reconcile')
             receipt.append(row)
