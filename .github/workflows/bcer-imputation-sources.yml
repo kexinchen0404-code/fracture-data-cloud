@@ -1,0 +1,26 @@
+name: Three-well imputation source evidence
+on:
+  push:
+    branches: ['codex/bcer-all-wells']
+    paths: ['.github/workflows/bcer-imputation-sources.yml', 'cloud/imputation_sources.py']
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: sudo apt-get install -y -qq poppler-utils
+      - name: Read latest reports and render corresponding source pages
+        env:
+          BCER_USERNAME: ${{ secrets.BCER_USERNAME }}
+          BCER_PASSWORD: ${{ secrets.BCER_PASSWORD }}
+        run: python3 cloud/imputation_sources.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bcer-three-well-sources
+          path: well-sources/
+          retention-days: 30
