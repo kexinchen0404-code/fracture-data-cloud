@@ -1,0 +1,16 @@
+name: Check private database configuration
+on:
+  push:
+    branches: ['codex/bcer-all-wells']
+    paths: ['.github/workflows/bcer-private-destination-check.yml']
+permissions: {}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check presence of a private destination credential
+        env:
+          HAS_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN != '' || secrets.TURSO_DATABASE_AUTH_TOKEN != '' || secrets.TURSO_TOKEN != '' || secrets.LIBSQL_AUTH_TOKEN != '' }}
+        run: |
+          if [ "$HAS_TOKEN" = true ]; then echo private-database-configured; else echo private-database-credential-missing; exit 1; fi
