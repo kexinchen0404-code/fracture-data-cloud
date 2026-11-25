@@ -31,7 +31,8 @@ def load_request():
                 or not isinstance(name, str) or "/" in name or "\\" in name
                 or not name.upper().endswith(".PDF")
                 or not name.startswith(wa + "_")
-                or not re.fullmatch(r"[0-9a-f]{64}", digest)
+                or not (re.fullmatch(r"[0-9a-f]{64}", digest) or
+                        (digest == "" and re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z", item.get("expected_modified", ""))))
                 or not isinstance(pages, list)
                 or any(type(page) is not int or page < 1 for page in pages)):
             raise ValueError("invalid_request")
@@ -75,14 +76,15 @@ def read_report(client, request, row):
         return
     record = current[0]
     row.update(file=record["Name"], path=record["full_path"])
-    if record["Name"].casefold() != request["file"].casefold():
+    if (record["Name"].casefold() != request["file"].casefold()
+            or (request.get("expected_modified") and request["expected_modified"] != stamp)):
         row["status"] = "revision_changed"
         return
     with tempfile.TemporaryDirectory() as scratch:
         pdf = Path(scratch) / "report.pdf"
         receipt = client.download(record, pdf)
         row.update(sha256=receipt["sha256"], bytes=receipt["bytes"])
-        if receipt["sha256"] != request["sha256"]:
+        if request["sha256"] and receipt["sha256"] != request["sha256"]:
             row["status"] = "hash_changed"
             return
         text = subprocess.check_output(["pdftotext", "-enc", "UTF-8", "-layout", str(pdf), "-"],
@@ -94,6 +96,7 @@ def read_report(client, request, row):
         row["text_file"] = receipt["sha256"] + "-text.json"
         (OUT / row["text_file"]).write_text(json.dumps(pages, ensure_ascii=False), encoding="utf-8")
         row["status"] = "verified"
+        row["expected_sha256"] = request["sha256"] or receipt["sha256"]
         row["rendered_pages"], row["render_errors"] = [], []
         for page in request["render_pages"]:
             if page > len(pages):
