@@ -1,0 +1,479 @@
+{
+  "purpose": "Recover explicitly labelled missing fracture and perforation parameters from current verified PDF sources",
+  "reports": [
+    {
+      "wa": "25832",
+      "file": "25832_COMP_2015OCT02.PDF",
+      "sha256": "a8e39da22fdf7faee5101332809f366ec613e0c0150e9b7e6ec3a38f1468dcd3",
+      "render_pages": []
+    },
+    {
+      "wa": "29918",
+      "file": "29918_COMP_2016JUL13_WITH FRAC SUMMARY.PDF",
+      "sha256": "242eae856d41ed0ac025c96a8d314670e4bef79c3c143076ba9b0734e7ac220b",
+      "render_pages": []
+    },
+    {
+      "wa": "29919",
+      "file": "29919_COMP_2016JUL13_WITH FRAC SUMMARY.PDF",
+      "sha256": "a09366883084439a6932b554e48d3c8528f6215b04e016f1c0c0d77fccadea8e",
+      "render_pages": []
+    },
+    {
+      "wa": "29920",
+      "file": "29920_COMP_2016JUL13_WITH FRAC SUMMARY.PDF",
+      "sha256": "a1ba0671a852f77080554f63f468b9d24be17cfc95ae6cc2561c62a36390e0ef",
+      "render_pages": []
+    },
+    {
+      "wa": "29921",
+      "file": "29921_COMP_2016JUL13_WITH FRAC SUMMARY.PDF",
+      "sha256": "8cba168c9bc8a5b9befad6ba548e9f995220796ea8e47d2d5d2247cb1c02229e",
+      "render_pages": []
+    },
+    {
+      "wa": "29922",
+      "file": "29922_COMP_2016JUL11_WITH FRAC SUMMARY.PDF",
+      "sha256": "313ae64b7ced7867bf609649015c58b1393091ecfc6db2d0b081bd8563c3de39",
+      "render_pages": []
+    },
+    {
+      "wa": "29923",
+      "file": "29923_COMP_2016JUL11_WITH FRAC SUMMARY.PDF",
+      "sha256": "e75240da32ff3d7c02a13e1b774de81980bbc3523093367bb6a811f3ce825f06",
+      "render_pages": []
+    },
+    {
+      "wa": "29924",
+      "file": "29924_COMP_2016JUL11_WITH FRAC SUMMARY.PDF",
+      "sha256": "c691c996503a27f709aa1d9baec81bbb0fbf4f917c26d5d2c2b899a37344507a",
+      "render_pages": []
+    },
+    {
+      "wa": "29925",
+      "file": "29925_COMP_2016JUL11_WITH FRAC SUMMARY.PDF",
+      "sha256": "3a81d7928dcf56a562575b8cafe29c7752655b3e10d20d81ac4df9f398be7f38",
+      "render_pages": []
+    },
+    {
+      "wa": "29926",
+      "file": "29926_COMP_2016JUL11_WITH FRAC SUMMARY.PDF",
+      "sha256": "041f3752880b1d1db9b1debbaa224000266f9113e85a3a166c8757e6b5578cc4",
+      "render_pages": []
+    },
+    {
+      "wa": "29927",
+      "file": "29927_COMP_2016JUL10_WITH FRAC SUMMARY.PDF",
+      "sha256": "72cb74af40b8dee357ffd7c9494c5ca196f1cea250b3c82b3710b8947e6702e4",
+      "render_pages": []
+    },
+    {
+      "wa": "29928",
+      "file": "29928_COMP_2016JUL11_WITH FRAC SUMMARY.PDF",
+      "sha256": "071b628a426d39d49857ad6151661986ecd596d6203676a41ba9589155ef0d3f",
+      "render_pages": []
+    },
+    {
+      "wa": "29929",
+      "file": "29929_COMP_2016JUL11_WITH FRAC SUMMARY.PDF",
+      "sha256": "a2fb7c73ec4b7c2ce93c80a5e8fab27d581647dfcd5dfcf951995f2875d09964",
+      "render_pages": []
+    },
+    {
+      "wa": "30349",
+      "file": "30349_COMP_2019APR24_C09-11.PDF",
+      "sha256": "a1e3748cef4d84666c80c613bbe4c8e2e9e9579cc96b937570b171db58e3a051",
+      "render_pages": []
+    },
+    {
+      "wa": "30350",
+      "file": "30350_COMP_2019MAY20_D09-11.PDF",
+      "sha256": "d25e70f3dfec006a269182b5fea253779210a2d1d95480858fc38b15bc5f9713",
+      "render_pages": []
+    },
+    {
+      "wa": "30351",
+      "file": "30351_COMP_2019APR29_E09-11 RESUBMIT.PDF",
+      "sha256": "161b93ba8d620b9a48f045a76c22f25df278f42d242df60958594a7767941099",
+      "render_pages": []
+    },
+    {
+      "wa": "30351",
+      "file": "30351_COMP_2019APR29_E09-11.PDF",
+      "sha256": "ed2ee3c74711a46eabc324a6201ad51fd8d32f92286107bffbcc4d2386b66a04",
+      "render_pages": []
+    },
+    {
+      "wa": "31134",
+      "file": "31134_COMP_2016NOV06_REVISED01.PDF",
+      "sha256": "9b8e8ef108c65000188d93e2bbc835cf39f065f35f13eed06c13ef1383938db9",
+      "render_pages": []
+    },
+    {
+      "wa": "33091",
+      "file": "33091_COMP_2022JAN28_FRAC REVISED.PDF",
+      "sha256": "e10b24677c9c8aa9adb2e62b5670470327e942ec36186979168d5c5a5a104ded",
+      "render_pages": []
+    },
+    {
+      "wa": "33092",
+      "file": "33092_COMP_2022JAN28_FRAC REVISED.PDF",
+      "sha256": "01f402028e995e44fd246bb7eaa64adb9e62ae9a28b83579dc21f7444e3a901b",
+      "render_pages": []
+    },
+    {
+      "wa": "33093",
+      "file": "33093_COMP_2022JAN28_FRAC REVISED.PDF",
+      "sha256": "b27c012d6e2adccbd93c32e70ba896654cb63bb35ec0fb7dd0fc49e20a0ec8e9",
+      "render_pages": []
+    },
+    {
+      "wa": "33094",
+      "file": "33094_COMP_2022JAN28_FRAC REVISED.PDF",
+      "sha256": "3c062ec81f89386527240bcf288560e3150bdcb135441c50196573b6301eae4c",
+      "render_pages": []
+    },
+    {
+      "wa": "33418",
+      "file": "33418_COMP_2018OCT09_BJ93I94B9.PDF",
+      "sha256": "14b555cb243d81f9520394749ccd3dd0d1d25f69ce6c2aec50d078ae193cc711",
+      "render_pages": []
+    },
+    {
+      "wa": "33419",
+      "file": "33419_COMP_2018OCT09_BK93I94B9.PDF",
+      "sha256": "2ef0a900e7d796358061a5dce0db1177a49621ab7f28d7cf89bb310013968b25",
+      "render_pages": []
+    },
+    {
+      "wa": "33420",
+      "file": "33420_COMP_2018OCT09_BL93I94B9.PDF",
+      "sha256": "3dfbdb5ed08550602e72c040bd5e92725d0ec3173b390868f6249d4eacc7eac2",
+      "render_pages": []
+    },
+    {
+      "wa": "33421",
+      "file": "33421_COMP_2018OCT09_BM93I94B9.PDF",
+      "sha256": "cbfdb872845e31e3ee9089a283313b72582a1ffa132897baed6737436edb72a4",
+      "render_pages": []
+    },
+    {
+      "wa": "33422",
+      "file": "33422_COMP_2018OCT09_BF93I94B9.PDF",
+      "sha256": "8fcbf052fec45273632a7c74813fbcca0c259ee9ea4ce53005d2fbb70ed6a6bc",
+      "render_pages": []
+    },
+    {
+      "wa": "33423",
+      "file": "33423_COMP_2018OCT09_BG93I94B9.PDF",
+      "sha256": "ffc046a9e710a9ee2ccdbf9cca246092726430823ea6c7ae62d1aa4f2baa2269",
+      "render_pages": []
+    },
+    {
+      "wa": "33424",
+      "file": "33424_COMP_2018OCT09_BH93I94B9.PDF",
+      "sha256": "7d3a67142314f4f634ec55f275776bc52ada46fde3d49a26fb2a3ec7ac70c4bc",
+      "render_pages": []
+    },
+    {
+      "wa": "33425",
+      "file": "33425_COMP_2018OCT09_BI93I94B9.PDF",
+      "sha256": "407fc7bc6a73d2abcf77645d41c3f48e199cb21194249883fb63fd60972c8707",
+      "render_pages": []
+    },
+    {
+      "wa": "33426",
+      "file": "33426_COMP_2018OCT09_BC93I094B09.PDF",
+      "sha256": "58aefaeffcc1bd03d1b13251aa79d3302d621c9c6accad9417b2c08accc9bb1c",
+      "render_pages": []
+    },
+    {
+      "wa": "33427",
+      "file": "33427_COMP_2018OCT09_BD93I94B09.PDF",
+      "sha256": "9b9d9fcb46b329d1e41560c1cc4cb6ee3652dcbd0a1fe9ad3939f41e732f6d21",
+      "render_pages": []
+    },
+    {
+      "wa": "33428",
+      "file": "33428_COMP_2018OCT09_BE93I94B9.PDF",
+      "sha256": "f4b56519d957fc83fcf137eeecb503fbba551c80b0c94769652b014473a03c24",
+      "render_pages": []
+    },
+    {
+      "wa": "34034",
+      "file": "34034_COMP_2018NOV05_A032I094B09.PDF",
+      "sha256": "711140d8ad32db4f0e0e48046d75592f9ff5fb2695461d7ce1d4c7d65b3af78c",
+      "render_pages": []
+    },
+    {
+      "wa": "34036",
+      "file": "34036_COMP_2018NOV05_AB32I94B09.PDF",
+      "sha256": "eed76a249098a0520b4d4368b69cb1298e42c69231b0a4642fd52f9b1f98d23e",
+      "render_pages": []
+    },
+    {
+      "wa": "34037",
+      "file": "34037_COMP_2018NOV05_AC32I94B09.PDF",
+      "sha256": "357dc2b10d167117ea3ed771d795ad7b6f49b1ecd3297ab67e7e2711bb5157ab",
+      "render_pages": []
+    },
+    {
+      "wa": "34038",
+      "file": "34038_COMP_2018NOV05_AD32I094B09.PDF",
+      "sha256": "7c32208b6ddcbb1bc5af81ad139b69faca2ca160eb7a08bf0259ee671a36efc5",
+      "render_pages": []
+    },
+    {
+      "wa": "34229",
+      "file": "34229_COMP_2022JAN14_E9-14 FRAC UPDATED VERSION.PDF",
+      "sha256": "54b8bffe4f0421012ace56dfe144f2038affa7820e6882d14a70ecbe4074dac1",
+      "render_pages": []
+    },
+    {
+      "wa": "34230",
+      "file": "34230_COMP_2022JAN15_D9-14 FRAC UPDATED VERSION.PDF",
+      "sha256": "de81b15a51b86ac92a7c0f2a7734236d0ac3b90d9c790fca4610797be320545b",
+      "render_pages": [
+        85
+      ]
+    },
+    {
+      "wa": "34231",
+      "file": "34231_COMP_2022JAN17_C9-14 FRAC UPDATED VERSION.PDF",
+      "sha256": "26eebecc5f5570b44d205079dc05c1de0dada2eac4f3c7f88bc996b76c705a86",
+      "render_pages": []
+    },
+    {
+      "wa": "34232",
+      "file": "34232_COMP_2022JAN21_B9-14 FRAC UPDATED VERSION.PDF",
+      "sha256": "bc07799aff1c0658ca25f5c63fad68488f6f24e25f46a40a2d911255a04aaa1e",
+      "render_pages": []
+    },
+    {
+      "wa": "34233",
+      "file": "34233_COMP_2022JAN18_A9-14 FRAC UPDATED VERSION.PDF",
+      "sha256": "49f62dbe227314c624b24a7306331cb8de12b6f1232694ef67e4bc98736c86f3",
+      "render_pages": [
+        414,
+        487,
+        488
+      ]
+    },
+    {
+      "wa": "34234",
+      "file": "34234_COMP_2022JAN26_09-14 FRAC UPDATED VERSION.PDF",
+      "sha256": "23da532a39d4447468f542b8ed6aecaba90757df8a3f959950c141f2fbc0c331",
+      "render_pages": []
+    },
+    {
+      "wa": "35019",
+      "file": "35019_COMP_2021SEP16_FRAC.PDF",
+      "sha256": "cd5b45035b7f21ec08b99779f21e1cfac369f50f35ce992102263a2ecbb2ba2c",
+      "render_pages": []
+    },
+    {
+      "wa": "35020",
+      "file": "35020_COMP_2021SEP17_FRAC.PDF",
+      "sha256": "b83cfeb21dea088bdc9628579ab02c5f16339ce7ef0a1a5b14d50d6ce0c7988e",
+      "render_pages": []
+    },
+    {
+      "wa": "35021",
+      "file": "35021_COMP_2021AUG17_FRAC.PDF",
+      "sha256": "d07b740c32e560c4214e82924ab5a4e046e9092d58d2129e4d7074c67d306d00",
+      "render_pages": []
+    },
+    {
+      "wa": "35022",
+      "file": "35022_COMP_2021AUG18_FRAC.PDF",
+      "sha256": "281980da1eefac02eea9e9c690b4dfdc6179623a9bff2b229a068e2f9ee050fa",
+      "render_pages": []
+    },
+    {
+      "wa": "35023",
+      "file": "35023_COMP_2021AUG18_FRAC.PDF",
+      "sha256": "5b19e55edc71ded3d0154b6b37589887ea7b9536df6b29d8a6a020585d9215b3",
+      "render_pages": []
+    },
+    {
+      "wa": "35024",
+      "file": "35024_COMP_2021AUG19_FRAC.PDF",
+      "sha256": "9128181df8345e0d3c65b06446710b41488b5e6e7b42293d155e712378035f1d",
+      "render_pages": []
+    },
+    {
+      "wa": "35025",
+      "file": "35025_COMP_2021AUG19_FRAC.PDF",
+      "sha256": "3dc64ca467dc8c557b01c69f589b9bca45e3d8759e3c7348376461ef4311536f",
+      "render_pages": []
+    },
+    {
+      "wa": "36587",
+      "file": "36587_COMP_2020APR05_REVISED.PDF",
+      "sha256": "db5b1ccce88353816a595033202e9c40492d12ae44d3aa8fb89a617835b0852b",
+      "render_pages": []
+    },
+    {
+      "wa": "36588",
+      "file": "36588_COMP_2020APR05_REVISED01.PDF",
+      "sha256": "084fe94014aba19ddad3b0b9a2fcef53c83e2162dbb1c00406f91892d011fa07",
+      "render_pages": []
+    },
+    {
+      "wa": "36589",
+      "file": "36589_COMP_2020APR12_REVISED01.PDF",
+      "sha256": "e49cd3449f0cd3356ac0665e01f9360743b58286111ab1250a8daa56bd45d7d3",
+      "render_pages": []
+    },
+    {
+      "wa": "36591",
+      "file": "36591_COMP_2020APR26_REVISED01.PDF",
+      "sha256": "72c481a9ec6637daf83fef003c92ae0b8231fee3a7ece3af7acf840be5938382",
+      "render_pages": []
+    },
+    {
+      "wa": "36592",
+      "file": "36592_COMP_2020APR27_REVISED01.PDF",
+      "sha256": "93308c9c50d53222fe5f29f8613ce50fe338ed509d7ed3ae5ea2c69d81146ad5",
+      "render_pages": []
+    },
+    {
+      "wa": "36593",
+      "file": "36593_COMP_2020JUN06_INITIAL COMP - REVISED.PDF",
+      "sha256": "473345c927b20a7a43fa9f4f22bf47c629bce81f19235f4d6446ee7546cb885f",
+      "render_pages": []
+    },
+    {
+      "wa": "36595",
+      "file": "36595_COMP_2020MAY27_REVISED.PDF",
+      "sha256": "7dfe328412a1f87b62c5a5024cda82da167000cc8da1ba68254e480a75d87820",
+      "render_pages": []
+    },
+    {
+      "wa": "37477",
+      "file": "37477_COMP_2020SEP11_REVISED.PDF",
+      "sha256": "5901562f1aafaca3ec3915b00ec2b5050989d8cc68281e96c8a9c0ca22162991",
+      "render_pages": []
+    },
+    {
+      "wa": "37478",
+      "file": "37478_COMP_2020SEP14_REVISED.PDF",
+      "sha256": "c0c9f701293eaebbef8808cc16abca537b430145df5644ca4b9c445765383e37",
+      "render_pages": []
+    },
+    {
+      "wa": "37479",
+      "file": "37479_COMP_2020SEP13_REVISED.PDF",
+      "sha256": "36ee0716b93e31a3ad643c2509c07451bc358f5505b5f34390dc15238f518219",
+      "render_pages": []
+    },
+    {
+      "wa": "37480",
+      "file": "37480_COMP_2020NOV06.PDF",
+      "sha256": "a9c58cc22502581f2bbde350803da5d0054da50da3e7fe74c9a122a0ffd149fb",
+      "render_pages": []
+    },
+    {
+      "wa": "37481",
+      "file": "37481_COMP_2020NOV06.PDF",
+      "sha256": "c665b19442d2912e6161883aecc84f4e8316c751c8cbe9c25bffa6a278298c0d",
+      "render_pages": []
+    },
+    {
+      "wa": "37482",
+      "file": "37482_COMP_2020NOV06.PDF",
+      "sha256": "2dbc911e0edd20fd44b8c2e42b205435904c2fc088c6fb03f651fe33a7c75b7b",
+      "render_pages": []
+    },
+    {
+      "wa": "37483",
+      "file": "37483_COMP_2020NOV06.PDF",
+      "sha256": "b7da1a54e7e454f4a949e8f3bb95d7c143dbebdfb238db538d4689d37e9cee80",
+      "render_pages": []
+    },
+    {
+      "wa": "37484",
+      "file": "37484_COMP_2020NOV06.PDF",
+      "sha256": "0bd3caf242570d09b5eb03b976c029f357bcc4486c548d9676e99182c49a6505",
+      "render_pages": []
+    },
+    {
+      "wa": "37485",
+      "file": "37485_COMP_2020NOV12.PDF",
+      "sha256": "bc8d5f07b42c540efd457cecfa2cd4da19d124a0c295832b51448b0939ea50df",
+      "render_pages": []
+    },
+    {
+      "wa": "37682",
+      "file": "37682_COMP_2022MAR22_FRAC.PDF",
+      "sha256": "54545857d0c5fc11d04ba75226812d9df338c5966bb3a31aa4a950520670ee74",
+      "render_pages": []
+    },
+    {
+      "wa": "37683",
+      "file": "37683_COMP_2022MAR30_FRAC.PDF",
+      "sha256": "7d48f73be2328c378dbba5f3970e4e8d74819411b405ed793aa1bd12a8b97056",
+      "render_pages": []
+    },
+    {
+      "wa": "37684",
+      "file": "37684_COMP_2022MAR29_FRAC.PDF",
+      "sha256": "505a87824aff18e6c08d351bb6c8f2c2fa0c79e4616f339a902c01430362811d",
+      "render_pages": []
+    },
+    {
+      "wa": "37725",
+      "file": "37725_COMP_2022JAN29_FRAC REVISED.PDF",
+      "sha256": "61b9fcd00c33d6f6f55eee8075ef49fd4d9178687fcae3f0e8bd86e6997eee71",
+      "render_pages": []
+    },
+    {
+      "wa": "37940",
+      "file": "37940_COMP_2019JUN15_A08-26.PDF",
+      "sha256": "95399d593f14f383b4f6ce0f1b96d521a3c353ea50bff8bf6e475ad607951e61",
+      "render_pages": []
+    },
+    {
+      "wa": "37940",
+      "file": "37940_COMP_2019JUN15_A08-26V2.PDF",
+      "sha256": "e83cd49185626df258e1db9935c01516bc05117754519a48b6d1d18d6efc887e",
+      "render_pages": []
+    },
+    {
+      "wa": "39311",
+      "file": "39311_COMP_2021AUG24_INITIAL COMPREV01.PDF",
+      "sha256": "28e1c6818fe9d23c521d2bda3804a0b8db9b3abf14616565d33bada93cf4ea3d",
+      "render_pages": []
+    },
+    {
+      "wa": "39313",
+      "file": "39313_COMP_2021SEP03_FRACREV02.PDF",
+      "sha256": "31e7f14091ff52167780d5c2d9da9b482ad1cf693fa2571e65c8549f08c2ced0",
+      "render_pages": []
+    },
+    {
+      "wa": "39314",
+      "file": "39314_COMP_2021AUG19_FRACREV01.PDF",
+      "sha256": "0dd19bed0bf6e2104c554afa4e77bb450cc241090b42e2f17b5475c19b05ddf8",
+      "render_pages": []
+    },
+    {
+      "wa": "41208",
+      "file": "41208_COMP_2021SEP23_FRAC.PDF",
+      "sha256": "581d7c069edb45abc029b27c5670f721bd2eaf730035b659153de3f78aa3597c",
+      "render_pages": []
+    },
+    {
+      "wa": "41209",
+      "file": "41209_COMP_2021NOV10_FRAC.PDF",
+      "sha256": "832bfa60f54208a05c966cbd8b526c45fdc00cc401f366da780270eea931f881",
+      "render_pages": []
+    },
+    {
+      "wa": "41210",
+      "file": "41210_COMP_2021SEP24_FRAC.PDF",
+      "sha256": "365f8d851218bf2ec910b0c63c8edb95f708c0e03c1f0a1fff7b28379d6f5d2f",
+      "render_pages": []
+    }
+  ]
+}

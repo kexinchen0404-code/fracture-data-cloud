@@ -1,0 +1,28 @@
+name: Recover missing BCER report evidence
+on:
+  push:
+    branches: ['codex/bcer-all-wells']
+    paths: ['.github/workflows/bcer-missing-sources.yml', 'cloud/recover_missing_sources.py', 'cloud/missing_sources_request.json']
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: sudo apt-get install -y -qq poppler-utils
+      - name: Verify latest report versions and collect missing-value evidence
+        env:
+          BCER_USERNAME: ${{ secrets.BCER_USERNAME }}
+          BCER_PASSWORD: ${{ secrets.BCER_PASSWORD }}
+        run: python3 cloud/recover_missing_sources.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bcer-missing-sources
+          path: well-missing-sources/
+          retention-days: 30
+          if-no-files-found: warn
