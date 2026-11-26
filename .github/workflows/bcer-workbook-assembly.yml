@@ -5,6 +5,9 @@ on:
       stage:
         type: string
         required: true
+    secrets:
+      catalog_token:
+        required: false
 permissions:
   contents: write
 jobs:
@@ -12,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 330
     concurrency:
-      group: ${{ (inputs.stage == 'final' || inputs.stage == 'latest-reviewed') && 'bcer-current-report-extraction' || 'bcer-available-report-workbook' }}
+      group: ${{ inputs.stage == 'available' && 'bcer-available-report-workbook' || 'bcer-current-report-extraction' }}
       cancel-in-progress: false
     env:
       STAGE: ${{ inputs.stage }}
@@ -43,6 +46,11 @@ jobs:
             ln data/bcer_current/hydraulic_fracture_csv.zip "$asset"
             gh release upload "$RESULT_TAG" "$asset"
           fi
+      - name: Collect verified perforations for the current report hashes
+        if: inputs.stage == 'cluster-reviewed'
+        env:
+          TURSO_AUTH_TOKEN: ${{ secrets.catalog_token }}
+        run: python cloud/perforation_clusters.py collect
       - name: Collect current group records and verify the workbook
         env:
           GH_TOKEN: ${{ github.token }}
@@ -54,7 +62,7 @@ jobs:
           python3 cloud/export_stage_catalog.py
           ln outputs/*/*.xlsx BCER-fracture-stages-current.xlsx
       - name: Reconcile every well and missing-value state before publication
-        if: inputs.stage == 'latest-reviewed'
+        if: inputs.stage == 'latest-reviewed' || inputs.stage == 'cluster-reviewed'
         run: |
           python3 - <<'PY'
           import json
@@ -71,11 +79,13 @@ jobs:
           print('WELL_STATES_VERIFIED',s['latest_wells'],s['latest_fields'],s['source_coverage_status'],len(unresolved))
           PY
       - uses: actions/upload-artifact@v4
+        if: inputs.stage != 'cluster-reviewed'
         with:
           name: verified-stage-catalog-${{ inputs.stage }}
           path: verified-stage-catalog.zip
           retention-days: 14
       - uses: actions/upload-artifact@v4
+        if: inputs.stage != 'cluster-reviewed'
         with:
           name: BCER-current-workbook-${{ inputs.stage }}
           path: BCER-fracture-stages-current.xlsx
@@ -86,8 +96,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp tmp/curve_read/merged_sheets/snapshot.json BCER-report-coverage-current.json
+          if [ "$STAGE" = cluster-reviewed ]; then
+            test "$(gh release view "$RESULT_TAG" --json isDraft --jq .isDraft)" = true
+            gh release upload "$RESULT_TAG" verified-stage-catalog.zip --clobber
+          fi
           gh release upload "$RESULT_TAG" BCER-fracture-stages-current.xlsx BCER-report-coverage-current.json --clobber
           gh release view "$RESULT_TAG" --json url --jq .url
+      - name: Publish and read back the current structured research catalog
+        if: inputs.stage == 'cluster-reviewed'
+        env:
+          TURSO_AUTH_TOKEN: ${{ secrets.catalog_token }}
+        run: python cloud/publish_fracture_catalog.py
       - name: Verify final source coverage
         if: inputs.stage == 'final'
         run: python3 -c 'import json; s=json.load(open("BCER-report-coverage-current.json")); assert s["groups_saved"]==s["groups_expected"] and s["wells_complete"]==s["total_directories"] and s["reports_unresolved"]==0, s'

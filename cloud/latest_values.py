@@ -140,7 +140,7 @@ def compile_latest(all_wells,sinks,dict_rows,tab_rows,blocked_by_wa):
     for k,(label,unit,*_) in PARAM.items():
         missing_stats.append(['PDF施工段参数',label+' '+unit,stage_n,missing[k],100*missing[k]/stage_n if stage_n else None,zero[k],'仅以已定位到井、施工段和报告页的记录为分母。'])
     for r in tab_rows('PDF射孔簇数'):
-        if r[4]=='同井同段施工服务报告':add_pdf(r[0],cl,r[3],r[-1],r[-2],r[2],r[1])
+        if r[4] in ('同井同段施工服务报告','逐簇实射表连续编号'):add_pdf(r[0],cl,r[3],r[-1],r[-2],r[2],r[1])
     latest=sinks['每井最新值'];ev=sinks['最新值取值依据'];stat=sinks['缺失统计']
     heads=['井号 WA','井名','有值字段数','源资料缺失字段','修订次序待核字段',*names.values()]
     widths=[14,54,20,84,84]+[max(20,min(38,len(h)*2+2)) for h in names.values()]

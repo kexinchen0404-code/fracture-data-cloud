@@ -70,7 +70,8 @@ def compile_all(assets):
     unreadable=dict(name='PDF未读报告',headers=['井号 WA','报告文件','目录大小 B','已验证源文件 SHA-256','源目录修改时间','源路径','读取状态','具体原因'],widths=[13,54,19,73,30,102,20,84],template_index=6,use_widths=True)
     frag=dict(name='受损PDF片段',headers=['井号 WA','报告文件','原始对象号','对象代次','原文件字节偏移','识别方式或缺失原因','可读字符数','段标签候选','原文参数候选（含单位）','原文件 SHA-256'],widths=[14,58,17,13,25,40,20,23,90,74],template_index=6,use_widths=True)
     bench=dict(name='层位与邻井压力线索',headers=['井号 WA','原页段标签','PDF 页','原页面出现的 Montney 层位','邻井压力或压窜文字命中','报告文件','报告 SHA-256'],widths=[15,18,13,52,36,62,74],template_index=6,use_widths=True)
-    tables=[*TABS,extra,clusters,unreadable,frag,bench,*latest_definitions()]
+    detail=dict(name='PDF逐簇射孔明细',headers=['井号 WA','施工段号','簇号','射孔顶深 mKB','射孔底深 mKB','射孔日期（报告月/日/年）','原报告页码','报告文件','报告 SHA-256'],widths=[14,15,12,23,23,30,25,60,74],template_index=6,use_widths=True)
+    tables=[*TABS,extra,clusters,unreadable,frag,bench,*latest_definitions(),detail]
     for t in tables:
         if t['name'] in ('PDF施工段参数','PDF曲线特征点','PDF与大表核对','PDF报告清单','PDF参数待核对','PDF射孔簇数','待复核图页','PDF未读报告','受损PDF片段','层位与邻井压力线索'):
             t['missing_range']=[1,len(t['headers'])]
@@ -180,6 +181,23 @@ def compile_all(assets):
     sinks['字段字典'].add(['最新值取值依据','当次作业值（参考）','源表最近施工日期及已知开始时钟','有多条同时刻记录时，只有同值或时间可唯一排序才显示该次作业参考值。源站报告修改时间与现场施工时间分别记录。'])
     sinks['字段字典'].add(['受损PDF片段','原始对象号和文件偏移','未能还原完整页序的公开报告','用源文件哈希及 PDF 原对象号回查。OCR 数值保留为线索。原始页序无法证明的片段不参与逐段定量汇总。'])
     sinks['字段字典'].add(['层位与邻井压力线索','层位与词句命中','报告原页匹配','可能提及本井或邻井，仅作为原页查找线索。井层归属、子母井配对、压窜事件须用原文和现场证据确认。'])
+    cluster_path=Path('checked-clusters.json')
+    if cluster_path.is_file():
+        reports=json.loads(cluster_path.read_text(encoding='utf8'))
+        assert all((r['wa'],r['sha']) in seen or (r['wa'],r['sha']) in current_keys for r in reports)
+        stats['cluster_reports_checked']=len(reports)
+        for r in reports:
+            stages=collections.defaultdict(list)
+            for st,cl,a,b,date,pages0 in r['rows']:
+                stages[st].append((cl,pages0))
+                sinks[detail['name']].add([r['wa'],st,cl,a,b,date,', '.join(map(str,pages0)),r['name'],r['sha']])
+            for st,entries in stages.items():
+                ids=sorted(cl for cl,_ in entries)
+                if ids!=list(range(1,len(entries)+1)) or st in r['conflict_stages']:continue
+                pp=sorted({p for _,ps in entries for p in ps})
+                sinks[cluster_tab].add([r['wa'],str(st),pp[0],len(ids),'逐簇实射表连续编号','已定位簇号 1–'+str(ids[-1])+'，原报告页 '+', '.join(map(str,pp)),r['name'],r['sha']])
+        sinks['字段字典'].add([detail['name'],'射孔深度及逐段簇数','Type=Perforated，Interval Number，Cluster #，Top Depth/Btm (mKB)','实射簇以井、报告、段号、簇号为键。重复出现保留全部页码。顶底深为以转盘方补心为基准的报告深度。逐段计数为所见表内不同连续簇号数。有效进液簇另需监测。'])
+        stats['perforated_cluster_records']=sum(p['count'] for p in sinks[detail['name']].parts)
     def collected(name):
         sink=sinks[name];sink.f.flush()
         for t in sink.parts:

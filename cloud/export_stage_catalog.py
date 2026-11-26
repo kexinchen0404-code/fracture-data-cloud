@@ -24,7 +24,7 @@ def review_excerpt():
     """Keep the headers, widths, styles and first actual records of the changed views."""
     from merge_pdf_workbook import B,N,R,P,CT,APP,VT,tag,xml
     sample=io.BytesIO()
-    names={'PDF施工段参数','PDF射孔簇数','PDF未读报告','受损PDF片段','每井最新值','最新值取值依据','逐条缺失索引','缺失统计'}
+    names={'PDF施工段参数','PDF射孔簇数','PDF逐簇射孔明细','PDF未读报告','受损PDF片段','每井最新值','最新值取值依据','逐条缺失索引','缺失统计'}
     with ZipFile(B) as src,ZipFile(sample,'w',ZIP_DEFLATED) as out:
         book=ET.fromstring(src.read('xl/workbook.xml'));sheets=book.find(tag(N,'sheets'))
         for sheet in list(sheets):
